@@ -1,0 +1,47 @@
+### C++ template
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Build / IDE
+build/
+.idea/
+cmake-build-*/
+CMakeUserPresets.json
+
+# Generated reports (keep directory via .gitkeep if needed)
+report/*/
+
+# Temporary Boost source trees used only for bcp extraction
+third_party/_boost_src/
+third_party/_boost_git/
+

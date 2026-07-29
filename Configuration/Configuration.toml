@@ -1,0 +1,139 @@
+# CppSentinel 检查项配置
+#
+# 每个 [表] 对应一条审计 method。占位符：
+#   {file_in}  -> 命令行 check_path（源文件 / compile_commands / 工程根等，视工具而定）
+#   {file_out} -> report/<时间戳>/<MethodName>.out（始终是文件路径）
+#
+# environment: mingw64 | clang64 | ucrt64 | clangarm64 | msys
+# 命令在 MSYS2 登录 shell（bash -l -c）中执行，请使用 POSIX 工具与路径。
+
+# ---------------------------------------------------------------------------
+# 静态分析：clang-tidy
+# {file_in} 期望为单个翻译单元（.cpp/.cc/.cxx）。
+# 若有 compile_commands.json，可放在 clang-tidy 能找到的位置，
+# 或自行在命令中加 -p <build_dir>。
+# ---------------------------------------------------------------------------
+[ClangTidy]
+name = "ClangTidy"
+enabled = true
+environment = "mingw64"
+command = """
+clang-tidy "{file_in}" \
+  -checks='clang-diagnostic-*,clang-analyzer-*,bugprone-*,cert-*,performance-*,portability-*,readability-*,modernize-*' \
+  -warnings-as-errors='' \
+  -header-filter='.*' \
+  --format-style=file \
+  --export-fixes="{file_out}" \
+  -- \
+  -std=c++20 \
+  -Wall \
+  -Wextra
+"""
+
+# ---------------------------------------------------------------------------
+# 格式门禁：clang-format（dry-run；需要重排格式时非 0 退出）
+# {file_in} 期望为源文件或头文件。
+# ---------------------------------------------------------------------------
+[ClangFormat]
+name = "ClangFormat"
+enabled = true
+environment = "mingw64"
+command = """
+clang-format --dry-run --Werror --style=file --output-replacements-xml "{file_in}" > "{file_out}" 2>&1
+"""
+
+# ---------------------------------------------------------------------------
+# 仅编译前端诊断（不链接）：快速语法/类型检查
+# {file_in} 期望为 .cpp 文件。
+# ---------------------------------------------------------------------------
+[CppSyntaxCheck]
+name = "CppSyntaxCheck"
+enabled = true
+environment = "mingw64"
+command = """
+g++ -std=c++20 -fsyntax-only -Wall -Wextra -Wpedantic -Wshadow -Wconversion "{file_in}" > "{file_out}" 2>&1
+"""
+
+# ---------------------------------------------------------------------------
+# 基于 clang 的额外诊断（空指针、格式串、fallthrough 等）
+# {file_in} 期望为 .cpp 文件。
+# ---------------------------------------------------------------------------
+[ClangDiagnostics]
+name = "ClangDiagnostics"
+enabled = true
+environment = "mingw64"
+command = """
+clang++ -std=c++20 -fsyntax-only \
+  -Wall -Wextra -Wpedantic \
+  -Wnull-dereference -Wformat=2 -Wimplicit-fallthrough \
+  -fno-color-diagnostics \
+  "{file_in}" > "{file_out}" 2>&1
+"""
+
+# ---------------------------------------------------------------------------
+# Clazy（偏 Qt 的静态检查）。非 Qt 项目可保持关闭。
+# 使用 clang64 环境。{file_in} 期望为 .cpp 文件。
+# ---------------------------------------------------------------------------
+[Clazy]
+name = "Clazy"
+enabled = false
+environment = "clang64"
+command = """
+clazy-standalone "{file_in}" \
+  -checks=level0,level1 \
+  -- \
+  -std=c++20 > "{file_out}" 2>&1
+"""
+
+# ---------------------------------------------------------------------------
+# cppcheck：独立于编译器的静态分析
+# {file_in} 可以是文件或目录。
+# ---------------------------------------------------------------------------
+[Cppcheck]
+name = "Cppcheck"
+enabled = true
+environment = "mingw64"
+command = """
+cppcheck --enable=warning,style,performance,portability,information \
+  --std=c++20 --language=c++ --force --inline-suppr \
+  --suppress=missingIncludeSystem \
+  --template='{file}:{line}:{column}: {severity}: {message} [{id}]' \
+  "{file_in}" > "{file_out}" 2>&1
+"""
+
+# ---------------------------------------------------------------------------
+# include-what-you-use（需单独安装）
+# 默认关闭；安装后启用：
+#   pacman -S mingw-w64-x86_64-include-what-you-use
+# ---------------------------------------------------------------------------
+[IncludeWhatYouUse]
+name = "IncludeWhatYouUse"
+enabled = false
+environment = "mingw64"
+command = """
+include-what-you-use -std=c++20 "{file_in}" > "{file_out}" 2>&1
+"""
+
+# ---------------------------------------------------------------------------
+# 文档生成（工程级）。{file_in} 应为 Doxyfile 路径。
+# 默认关闭：单个源文件不是合法 Doxyfile。
+# ---------------------------------------------------------------------------
+[Doxygen]
+name = "Doxygen"
+enabled = false
+environment = "mingw64"
+command = """
+doxygen "{file_in}" > "{file_out}" 2>&1
+"""
+
+# ---------------------------------------------------------------------------
+# 覆盖率报告。{file_in} 应为 llvm-cov 可接受的插桩产物。
+# 在生成覆盖率产物前请保持关闭。
+# ---------------------------------------------------------------------------
+[LlvmCov]
+name = "LlvmCov"
+enabled = false
+environment = "mingw64"
+command = """
+llvm-cov report "{file_in}" > "{file_out}" 2>&1
+"""

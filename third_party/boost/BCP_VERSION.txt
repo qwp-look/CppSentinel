@@ -1,0 +1,9 @@
+Vendored by bcp (Boost.Process and transitive headers)
+Boost version : 1.91.0
+bcp module    : process
+bcp binary    : third_party/_boost_src/boost_1_91_0/dist/bin/bcp.exe
+Generated     : 2026-07-29T19:35:30.8388553+08:00
+Notes         :
+  - docs/tests/examples and unused lib sources were trimmed after bcp
+  - project builds Process .cpp with BOOST_PROCESS_USE_STD_FS
+  - refresh via: scripts/vendor_boost.ps1 -BoostSource <boost_root>
