@@ -1,16 +1,14 @@
-#pragma once
+// Path conversion, shell quoting, and report filename sanitization.
+
+#include "cppsentinel/process/PathUtil.h"
 
 #include <algorithm>
 #include <cctype>
-#include <filesystem>
-#include <string>
-#include <string_view>
 
-namespace util
+namespace cppsentinel
 {
 
-/// ASCII 大小写不敏感比较（用于 mingw64 / MINGW64 等环境名）。
-inline bool iequals(std::string_view a, std::string_view b)
+bool iequals(std::string_view a, std::string_view b)
 {
     if (a.size() != b.size())
     {
@@ -28,9 +26,7 @@ inline bool iequals(std::string_view a, std::string_view b)
     return true;
 }
 
-/// 将 Windows/本地路径转为 MSYS2 POSIX 路径。
-/// 示例：C:\Users\a\b -> /c/Users/a/b
-inline std::string toMsysPath(const std::filesystem::path& input)
+std::string toMsysPath(const std::filesystem::path& input)
 {
     namespace fs = std::filesystem;
 
@@ -45,7 +41,6 @@ inline std::string toMsysPath(const std::filesystem::path& input)
     std::string s = abs.string();
     std::replace(s.begin(), s.end(), '\\', '/');
 
-    // 盘符路径：C:/Users/... -> /c/Users/...
     if (s.size() >= 2 && std::isalpha(static_cast<unsigned char>(s[0])) &&
         s[1] == ':')
     {
@@ -58,14 +53,10 @@ inline std::string toMsysPath(const std::filesystem::path& input)
         }
         return std::string("/") + drive + rest;
     }
-
-    // UNC 或相对路径：保留正斜杠。
     return s;
 }
 
-/// 为 bash -c 安全地单引号包裹字符串。
-/// 例如 it's 变成 'it'\''s'
-inline std::string shellSingleQuote(std::string_view value)
+std::string shellSingleQuote(std::string_view value)
 {
     std::string out;
     out.reserve(value.size() + 2);
@@ -85,8 +76,7 @@ inline std::string shellSingleQuote(std::string_view value)
     return out;
 }
 
-/// 仅保留适合作为报告文件名的字符。
-inline std::string sanitizeFileToken(std::string_view name)
+std::string sanitizeFileToken(std::string_view name)
 {
     std::string out;
     out.reserve(name.size());
@@ -109,4 +99,18 @@ inline std::string sanitizeFileToken(std::string_view name)
     return out;
 }
 
-} // namespace util
+std::filesystem::path resolveAgainst(const std::filesystem::path& baseDir,
+                                     const std::filesystem::path& maybeRelative)
+{
+    if (maybeRelative.empty())
+    {
+        return {};
+    }
+    if (maybeRelative.is_absolute())
+    {
+        return maybeRelative.lexically_normal();
+    }
+    return (baseDir / maybeRelative).lexically_normal();
+}
+
+} // namespace cppsentinel

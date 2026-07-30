@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  linux-native:
+    name: Linux Native
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y g++ cmake ninja-build
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCPPSENTINEL_BUILD_TESTS=ON
+      - name: Build
+        run: cmake --build build
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  windows-msys2:
+    name: Windows MSYS2
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-clang-tools-extra
+            mingw-w64-x86_64-cppcheck
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCPPSENTINEL_BUILD_TESTS=ON
+      - name: Build
+        run: cmake --build build
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+      - name: Install package smoke
+        shell: pwsh
+        run: |
+          cmake --install build --prefix install
+          $env:PATH = $env:PATH -replace [regex]::Escape("C:\msys64\mingw64\bin"), ""
+          & .\install\bin\CppSentinel.exe --help
+          if ($LASTEXITCODE -ne 0) { throw "installed binary failed to start" }

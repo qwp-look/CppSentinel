@@ -1,92 +1,132 @@
-# 架构说明
+# 架构说明（v2）
 
 > 英文版：[architecture.md](architecture.md)
 
-CppSentinel 是一个**可配置的 C++ 代码审计编排器**。它本身不做静态分析，而是：
+CppSentinel v2 是**可配置的 C++ 代码审计编排器**。它本身不做静态分析，而是：
 
-1. 从 TOML 加载工具命令  
-2. 在 MSYS2 环境中执行  
-3. 把输出收集到 `report/`
+1. 加载并校验 v2 TOML 配置  
+2. 通过注册表创建内建 Checker  
+3. 经 Native 或 MSYS2 进程层执行工具  
+4. 将诊断汇总为结构化 `RunReport` 并写出报告目录  
 
 ## 流水线
 
 ```text
-命令行 / 交互输入
+CLI: run --config --target
         │
         ▼
- FileFinder  ── search_path ──► Configuration.toml
+ ConfigLoader  ──► AppConfig（失败时返回 ConfigDiagnostic 列表）
         │
         ▼
- TomlParser  ──► vector<Method>
+ Engine
+   创建独占 report/<run-id>/
+   按 [[checker]] 声明顺序：
+     - disabled → Skipped
+     - CheckerRegistry::create(kind)
+     - 选择 ProcessRunner（native / msys2，测试可注入 Fake）
+     - Checker::run(CheckerContext)
+         → 构造 ProcessRequest（可执行文件 + argv）
+         → ProcessRunner::run
+         → 解析 stdout/stderr 日志 → Diagnostic[]
+     - 追加 CheckerResult
         │
         ▼
- ReportDir   ──► report/<年_月_日_时_分_秒_毫秒>/
+ ReportWriter  ──► report.json（原子发布）+ summary.txt + logs/ + artifacts/
         │
         ▼
- Scheduler
-   对每个 Method：
-     - disabled 则跳过
-     - CommandBuilder 替换 {file_in}/{file_out}
-     - Msys2Runner 在对应 MSYSTEM 下执行 bash -l -c
-     - 记录退出码
-        │
-        ▼
- 汇总 + 进程退出码
+ Console summary + exitCodeFor(fail_on)
+```
+
+## 源码布局
+
+```text
+main.cpp                         CLI 入口
+include/cppsentinel/
+  config/                        AppConfig、ConfigLoader
+  core/                          Engine、CheckerRegistry
+  checker/                       Checker 接口与内建实现辅助头
+  process/                       ProcessRequest、Runner、路径/环境
+  report/                        Diagnostic、RunReport、Reporter
+  util/                          文件 IO、时间戳
+src/                             与上述模块对应的实现
+cmake/BoostProcess.cmake         内嵌 Boost.Process 源列表
+Configuration/Configuration.toml 默认 v2 配置
+tests/unit|integration           CTest
 ```
 
 ## 模块职责
 
 | 模块 | 职责 |
 |------|------|
-| `main.cpp` | 参数解析与高层编排 |
-| `FileFinder` | BFS 查找 `Configuration.toml` |
-| `TomlParser` | 解析 method 表为 `Method` |
-| `ReportDir` | 创建可写的时间戳报告目录 |
-| `CommandBuilder` | 占位符展开 + Windows→MSYS 路径转换 |
-| `Msys2Runner` | 定位 MSYS2、构造子进程环境、执行 `bash -l -c` |
-| `Scheduler` | 依次运行 method 并汇总成败 |
+| `main.cpp` | 仅 CLI：解析 `run --config --target`、加载配置、调用 Engine、打印汇总 |
+| `config` | TOML 解析、schema 校验、相对路径解析 → 不可变 `AppConfig` |
+| `core` | `Engine` 编排；`CheckerRegistry` 按 `kind` 创建 Checker |
+| `checker` | 内建检查器；`CompileCommands` / `DiagnosticParser` |
+| `process` | `ProcessRequest/Result`；`NativeProcessRunner`、`Msys2ProcessRunner`、`FakeProcessRunner` |
+| `report` | `RunReport`；JSON / 控制台；独占报告目录与日志路径 |
 
-## MSYS2 执行模型
+**边界约定：**
 
-**不要**再走 `cmd.exe` + `msys2_shell.cmd`（多层引号极易出错）。
+- Checker **不**打印控制台汇总、**不**创建报告根目录、**不**计算进程退出码。  
+- Engine **不**解析 TOML、**不**解析工具输出、**不**拼 shell 命令。  
+- 路径在 Core/Checker 中保持 `std::filesystem::path`；转 MSYS POSIX 仅发生在 MSYS2 Runner 边界。
 
-正确方式：
+## 进程模型
+
+- **Native**（Linux / Windows）：直接 `executable + arguments`，stdout/stderr 写入日志文件，支持超时终止。  
+- **MSYS2**（仅 Windows）：
 
 ```text
-<MSYS2_ROOT>/usr/bin/bash.exe -l -c "<command>"
+<MSYS2>/usr/bin/bash.exe -l -c 'exec "$@"' cppsentinel-tool <exe> <arg...>
 ```
 
-子进程环境 = 父进程环境拷贝，再覆盖：
+不经过 `cmd.exe` / `msys2_shell.cmd`，避免嵌套引号。参数作为独立 argv，不做文本拼接。
+
+子进程环境 = 可选父环境拷贝 + profile/`ProcessRequest` 覆盖；MSYS2 强制：
 
 | 变量 | 值 |
 |------|-----|
-| `MSYSTEM` | `MINGW64` / `CLANG64` / … |
+| `MSYSTEM` | 如 `MINGW64` / `CLANG64` |
 | `CHERE_INVOKING` | `1` |
 | `MSYS2_PATH_TYPE` | `inherit` |
 
-TOML 中 `environment` 映射：
+## 报告与失败策略
 
-| TOML | `MSYSTEM` |
-|------|-----------|
-| `mingw64` | `MINGW64` |
-| `clang64` | `CLANG64` |
-| `ucrt64` | `UCRT64` |
-| `clangarm64` | `CLANGARM64` |
-| `msys` | `MSYS` |
+每次运行生成：
 
-## 占位符
+```text
+report/<run-id>/
+  report.json          # 机器可读事实源
+  summary.txt          # 与控制台同源摘要
+  logs/<id>.stdout.log
+  logs/<id>.stderr.log
+  artifacts/<id>/      # 如 clang-tidy fixes、clang-format XML
+```
 
-| 占位符 | 含义 |
-|--------|------|
-| `{file_in}` | CLI 的 `check_path`，转为 MSYS POSIX（`C:\a\b` → `/c/a/b`） |
-| `{file_out}` | 报告目录下该 method 的输出文件 |
+`run-id` 为本地时间戳（含毫秒）；冲突时追加后缀，**从不复用**已存在目录。
 
-## 退出码
+### CheckerStatus
+
+| 状态 | 含义 | 对退出码 |
+|------|------|----------|
+| `Succeeded` | 工具跑完（可有诊断） | 由 `fail_on` + 诊断严重级别决定 |
+| `Skipped` | `enabled = false` | 不影响失败 |
+| `TimedOut` / `StartError` / `ToolError` / `ConfigError` | 硬失败 | 始终导致非 0 |
+
+### 进程退出码
 
 | 码 | 含义 |
 |----|------|
-| 0 | 所有已启用 method 启动成功且返回 0 |
-| 1 | 启动失败（参数、配置、报告目录等） |
-| 2 | 至少一个 method 启动失败或返回非 0 |
+| 0 | 在 `[run].fail_on` 下全部通过 |
+| 1 | 启动级失败（CLI/配置/报告目录/报告写入等） |
+| 2 | 至少一个 checker 未通过策略 |
 
-禁用项不计入失败。
+## 扩展方式
+
+新增 Checker **无需修改** `Engine`：
+
+1. 实现 `Checker`（`kind()` + `run(const CheckerContext&)`）  
+2. 在 `registerBuiltinCheckers()` 注册工厂  
+3. 在配置中使用新的 `kind`，并补充单元/集成测试  
+
+当前为**编译期注册**；不做动态 DLL 插件，不做并行执行（`max_parallel` 固定为 1）。

@@ -1,90 +1,121 @@
-# Architecture
+# Architecture (v2)
 
 > 中文版：[architecture.zh-CN.md](architecture.zh-CN.md)
 
-CppSentinel is a **configurable C++ code-audit orchestrator**. It does not implement
-static analysis itself. It loads tool commands from TOML, runs them inside MSYS2
-environments, and collects outputs under `report/`.
+CppSentinel v2 is a **configurable C++ audit orchestrator**. It does not perform
+static analysis itself. It:
+
+1. Loads and validates a v2 TOML config
+2. Creates built-in checkers from a registry
+3. Runs tools through Native or MSYS2 process runners
+4. Collects diagnostics into a structured `RunReport` and writes a report tree
 
 ## Pipeline
 
 ```text
-CLI / interactive input
+CLI: run --config --target
         │
         ▼
- FileFinder  ── search_path ──► Configuration.toml
+ ConfigLoader  ──► AppConfig (or ConfigDiagnostic list)
         │
         ▼
- TomlParser  ──► vector<Method>
+ Engine
+   create exclusive report/<run-id>/
+   for each [[checker]] in order:
+     - disabled → Skipped
+     - CheckerRegistry::create(kind)
+     - pick ProcessRunner (native / msys2; tests may inject Fake)
+     - Checker::run(CheckerContext)
+         → build ProcessRequest (exe + argv)
+         → ProcessRunner::run
+         → parse stdout/stderr logs → Diagnostic[]
+     - append CheckerResult
         │
         ▼
- ReportDir   ──► report/<yyyy_mm_dd_HH_MM_SS_mmm>/
+ ReportWriter  ──► report.json (atomic publish) + summary.txt + logs/ + artifacts/
         │
         ▼
- Scheduler
-   for each Method:
-     - skip if disabled
-     - CommandBuilder replaces {file_in}/{file_out}
-     - Msys2Runner launches bash -l -c in MSYSTEM env
-     - record exit code
-        │
-        ▼
- Summary + process exit code
+ Console summary + exitCodeFor(fail_on)
 ```
 
-## Modules
+## Source layout
+
+```text
+main.cpp                         CLI entry
+include/cppsentinel/
+  config/                        AppConfig, ConfigLoader
+  core/                          Engine, CheckerRegistry
+  checker/                       Checker API + helper headers
+  process/                       ProcessRequest, runners, path/env
+  report/                        Diagnostic, RunReport, reporters
+  util/                          file IO, timestamps
+src/                             matching implementations
+cmake/BoostProcess.cmake         vendored Boost.Process sources
+Configuration/Configuration.toml default v2 config
+tests/unit|integration           CTest
+```
+
+## Module responsibilities
 
 | Module | Responsibility |
 |--------|----------------|
-| `main.cpp` | Argument parsing, high-level orchestration only |
-| `FileFinder` | BFS locate `Configuration.toml` |
-| `TomlParser` | Parse method tables into `Method` |
-| `ReportDir` | Create writable timestamped report directories |
-| `CommandBuilder` | Placeholder expansion + Windows→MSYS path conversion |
-| `Msys2Runner` | Discover MSYS2, build child env, run `bash -l -c` |
-| `Scheduler` | Run all methods, aggregate success/failure |
+| `main.cpp` | CLI only: parse `run --config --target`, load config, run engine, print summary |
+| `config` | TOML parse + schema validation + path resolution → immutable `AppConfig` |
+| `core` | `Engine` orchestration; `CheckerRegistry` creates checkers by `kind` |
+| `checker` | Built-in checkers; `CompileCommands` / `DiagnosticParser` |
+| `process` | `ProcessRequest/Result`; Native, MSYS2, and Fake runners |
+| `report` | `RunReport`; JSON/console; exclusive report dirs and log paths |
 
-## MSYS2 execution model
+**Boundaries:**
 
-Tools are **not** invoked through `cmd.exe` + `msys2_shell.cmd` (nested quoting is fragile).
+- Checkers do **not** print the run summary, create the report root, or choose the process exit code.
+- Engine does **not** parse TOML, parse tool output, or build shell command strings.
+- Paths stay as `std::filesystem::path` in Core/Checker; MSYS POSIX conversion happens only in the MSYS2 runner.
 
-Instead:
+## Process model
+
+- **Native** (Linux / Windows): direct `executable + arguments`, stdout/stderr to log files, timeout + terminate.
+- **MSYS2** (Windows only):
 
 ```text
-<MSYS2_ROOT>/usr/bin/bash.exe -l -c "<command>"
+<MSYS2>/usr/bin/bash.exe -l -c 'exec "$@"' cppsentinel-tool <exe> <arg...>
 ```
 
-Child environment (copied from the parent, then overridden):
+No `cmd.exe` / `msys2_shell.cmd`. Arguments remain separate argv entries.
 
-| Variable | Value |
-|----------|-------|
-| `MSYSTEM` | `MINGW64` / `CLANG64` / … |
-| `CHERE_INVOKING` | `1` |
-| `MSYS2_PATH_TYPE` | `inherit` |
+Child environment = optional parent copy + profile/`ProcessRequest` overlays; MSYS2 forces
+`MSYSTEM`, `CHERE_INVOKING=1`, `MSYS2_PATH_TYPE=inherit`.
 
-`environment` in TOML maps as:
+## Reports and failure policy
 
-| TOML | `MSYSTEM` |
-|------|-----------|
-| `mingw64` | `MINGW64` |
-| `clang64` | `CLANG64` |
-| `ucrt64` | `UCRT64` |
-| `clangarm64` | `CLANGARM64` |
-| `msys` | `MSYS` |
+```text
+report/<run-id>/
+  report.json
+  summary.txt
+  logs/<id>.stdout.log
+  logs/<id>.stderr.log
+  artifacts/<id>/
+```
 
-## Placeholders
+`run-id` is a local timestamp (with milliseconds); collisions get a suffix. Existing
+directories are **never** reused.
 
-| Token | Meaning |
-|-------|---------|
-| `{file_in}` | CLI `check_path`, converted to MSYS POSIX (`C:\a\b` → `/c/a/b`) |
-| `{file_out}` | Per-method file under the report directory |
+Hard statuses (`TimedOut`, `StartError`, `ToolError`, `ConfigError`) always fail.
+Soft completion with diagnostics is governed by `[run].fail_on`.
 
-## Exit codes
-
-| Code | Meaning |
+| Exit | Meaning |
 |------|---------|
-| 0 | Every enabled method launched and returned 0 |
-| 1 | Startup failure (args, config, report dir, …) |
-| 2 | At least one method failed to launch or returned non-zero |
+| 0 | Pass under `fail_on` |
+| 1 | Startup failure (CLI/config/report dir/write) |
+| 2 | At least one checker failed the policy |
 
-Disabled methods are skipped and do not affect the exit code.
+## Extending
+
+Add a checker **without** editing `Engine`:
+
+1. Implement `Checker` (`kind()` + `run(const CheckerContext&)`)
+2. Register a factory in `registerBuiltinCheckers()`
+3. Use the new `kind` in config and add tests
+
+Registration is compile-time only. No dynamic plugins; no parallel checkers yet
+(`max_parallel` must be 1).

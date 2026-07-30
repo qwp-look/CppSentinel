@@ -1,16 +1,23 @@
-// CppSentinel 程序入口。
-// 编排流程：查找配置 -> 解析 method -> 创建报告目录 -> 调度执行。
+// CppSentinel CLI entry point (v2).
+//
+// Responsibilities: parse `run --config --target`, load/validate config,
+// construct Engine with built-in checkers, print console summary, return exit code.
+// No tool execution or report-directory logic lives here.
+//
+// Usage: CppSentinel run --config <file> --target <file-or-dir>
+
+#include "cppsentinel/config/ConfigLoader.h"
+#include "cppsentinel/core/CheckerRegistry.h"
+#include "cppsentinel/core/Engine.h"
+#include "cppsentinel/report/ConsoleReporter.h"
 
 #include <exception>
 #include <filesystem>
 #include <iostream>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
-
-#include "FileFinder.h"
-#include "ReportDir.h"
-#include "Scheduler.h"
-#include "TomlParser.h"
 
 namespace
 {
@@ -18,131 +25,187 @@ namespace
 void printUsage(const char* argv0)
 {
     std::cerr
-        << "用法:\n"
-        << "  " << argv0 << " <search_path> <check_path>\n"
-        << "  " << argv0 << '\n'
+        << "Usage:\n"
+        << "  " << argv0 << " run --config <file> --target <file-or-dir>\n"
         << "\n"
-        << "参数:\n"
-        << "  search_path   用于搜索 Configuration.toml 的目录\n"
-        << "  check_path    替换到 {file_in} 的路径\n"
+        << "Options:\n"
+        << "  --config   Path to v2 Configuration.toml\n"
+        << "  --target   Source file or directory to check\n"
         << "\n"
-        << "环境变量:\n"
-        << "  MSYS2_ROOT    可选；MSYS2 安装根目录（含 usr/bin/bash.exe）\n"
+        << "Environment:\n"
+        << "  MSYS2_ROOT   Optional MSYS2 install root\n"
         << "\n"
-        << "示例:\n"
-        << "  " << argv0 << " \".\\Configuration\" \".\\main.cpp\"\n";
+        << "Example:\n"
+        << "  " << argv0
+        << " run --config .\\Configuration\\Configuration.toml --target "
+           ".\\main.cpp\n";
 }
 
-bool readInteractivePaths(std::string& searchPath, std::string& checkPath)
+struct CliArgs
 {
-    std::cout << "请输入 Configuration.toml 的搜索路径: " << std::flush;
-    if (!std::getline(std::cin, searchPath) || searchPath.empty())
-    {
-        std::cerr << "错误: 搜索路径为空\n";
-        return false;
-    }
+    std::filesystem::path config;
+    std::filesystem::path target;
+};
 
-    std::cout << "请输入 {file_in} 对应的检查路径: " << std::flush;
-    if (!std::getline(std::cin, checkPath) || checkPath.empty())
-    {
-        std::cerr << "错误: 检查路径为空\n";
-        return false;
-    }
-    return true;
-}
-
-int run(int argc, char* argv[])
+std::optional<CliArgs> parseArgs(int argc, char* argv[], std::string& error)
 {
-    std::string searchPath;
-    std::string checkPath;
-    const bool interactive = (argc == 1);
-
-    // --- 参数解析 ---------------------------------------------------------
-    if (argc == 3)
+    if (argc < 2)
     {
-        searchPath = argv[1];
-        checkPath = argv[2];
+        error = "missing command";
+        return std::nullopt;
     }
-    else if (interactive)
+
+    const std::string_view cmd = argv[1];
+    if (cmd == "-h" || cmd == "--help" || cmd == "help")
     {
-        if (!readInteractivePaths(searchPath, checkPath))
+        error = "help";
+        return std::nullopt;
+    }
+    if (cmd != "run")
+    {
+        error = "unknown command '" + std::string(cmd) + "' (expected 'run')";
+        return std::nullopt;
+    }
+
+    CliArgs args;
+    for (int i = 2; i < argc; ++i)
+    {
+        const std::string_view opt = argv[i];
+        auto needValue = [&](const char* name) -> std::optional<std::string> {
+            if (i + 1 >= argc)
+            {
+                error = std::string(name) + " requires a value";
+                return std::nullopt;
+            }
+            return std::string(argv[++i]);
+        };
+
+        if (opt == "--config")
         {
-            return 1;
+            auto v = needValue("--config");
+            if (!v)
+            {
+                return std::nullopt;
+            }
+            args.config = *v;
+        }
+        else if (opt == "--target")
+        {
+            auto v = needValue("--target");
+            if (!v)
+            {
+                return std::nullopt;
+            }
+            args.target = *v;
+        }
+        else if (opt == "-h" || opt == "--help")
+        {
+            error = "help";
+            return std::nullopt;
+        }
+        else
+        {
+            error = "unknown option '" + std::string(opt) + "'";
+            return std::nullopt;
         }
     }
-    else
+
+    if (args.config.empty())
     {
+        error = "missing required --config";
+        return std::nullopt;
+    }
+    if (args.target.empty())
+    {
+        error = "missing required --target";
+        return std::nullopt;
+    }
+    return args;
+}
+
+void printConfigDiagnostics(
+    const std::vector<cppsentinel::ConfigDiagnostic>& diags)
+{
+    std::cerr << "Configuration errors:\n";
+    for (const auto& d : diags)
+    {
+        std::cerr << "  - ";
+        if (d.line)
+        {
+            std::cerr << "line " << *d.line;
+            if (d.column)
+            {
+                std::cerr << ":" << *d.column;
+            }
+            std::cerr << " ";
+        }
+        if (!d.path.empty())
+        {
+            std::cerr << "[" << d.path << "] ";
+        }
+        std::cerr << d.message;
+        if (!d.hint.empty())
+        {
+            std::cerr << "  (hint: " << d.hint << ')';
+        }
+        std::cerr << '\n';
+    }
+}
+
+int runMain(int argc, char* argv[])
+{
+    std::string parseError;
+    auto args = parseArgs(argc, argv, parseError);
+    if (!args)
+    {
+        if (parseError == "help")
+        {
+            printUsage(argv[0]);
+            return 0;
+        }
+        std::cerr << "Error: " << parseError << "\n\n";
         printUsage(argv[0]);
         return 1;
     }
 
-    std::cout << "\n=== CppSentinel ===\n";
-    std::cout << "搜索路径 : " << searchPath << '\n';
-    std::cout << "检查路径 : " << checkPath << '\n';
-
-    // --- 定位 Configuration.toml ------------------------------------------
-    // 命令行模式失败即退出；交互模式允许重试搜索路径。
-    std::filesystem::path configPath;
-    while (true)
+    auto loaded = cppsentinel::loadConfig(args->config);
+    if (!loaded)
     {
-        std::string findError;
-        auto found = util::findConfigurationFile(searchPath, findError);
-        if (found)
-        {
-            configPath = found->path;
-            std::cout << "配置文件 : " << configPath.string() << '\n';
-            break;
-        }
-
-        std::cerr << "错误: " << findError << '\n';
-        if (!interactive)
-        {
-            return 1;
-        }
-
-        std::cout << "请重新输入搜索路径（空行退出）: " << std::flush;
-        if (!std::getline(std::cin, searchPath) || searchPath.empty())
-        {
-            return 1;
-        }
-    }
-
-    // --- 解析 method ------------------------------------------------------
-    std::vector<Method> methods;
-    std::string parseError;
-    if (!util::parseMethodConfiguration(configPath, methods, parseError))
-    {
-        std::cerr << "错误: " << parseError << '\n';
+        printConfigDiagnostics(loaded.diagnostics);
         return 1;
     }
-    std::cout << "Method 数 : " << methods.size() << '\n';
 
-    // --- 创建 report/<时间戳>/ ---------------------------------------------
-    std::string reportError;
-    auto report = util::createTimestampedReportDir("report", reportError);
-    if (!report)
+    std::error_code ec;
+    if (!std::filesystem::exists(args->target, ec))
     {
-        std::cerr << "错误: " << reportError << '\n';
+        std::cerr << "Error: target path does not exist: " << args->target
+                  << '\n';
         return 1;
     }
-    std::cout << "报告目录 : " << report->path.string() << '\n';
 
-    // --- 执行全部已启用 method --------------------------------------------
-    const util::SchedulePaths paths{
-        .checkPath = std::filesystem::path(checkPath),
-        .reportDir = report->path,
-    };
-    const auto summary = util::scheduleMethods(methods, paths);
+    cppsentinel::CheckerRegistry registry;
+    cppsentinel::registerBuiltinCheckers(registry);
+    cppsentinel::Engine engine(std::move(registry));
 
-    std::cout << "\n=== 汇总 ===\n";
-    std::cout << "总数     : " << summary.total << '\n';
-    std::cout << "跳过     : " << summary.skipped << '\n';
-    std::cout << "已启动   : " << summary.launched << '\n';
-    std::cout << "成功     : " << summary.succeeded << '\n';
-    std::cout << "失败     : " << summary.failed << '\n';
+    cppsentinel::RunRequest request;
+    request.config = std::move(loaded.config);
+    request.target = std::filesystem::absolute(args->target, ec);
+    if (ec)
+    {
+        request.target = args->target;
+    }
 
-    // 0 = 全部已启用 method 成功；2 = 存在失败项。
-    return summary.failed == 0 ? 0 : 2;
+    const auto report = engine.run(request);
+    cppsentinel::writeConsoleSummary(report, std::cout);
+
+    if (!report.metadata.report_dir.empty())
+    {
+        std::cout << "\nreport.json : "
+                  << (report.metadata.report_dir / "report.json").string()
+                  << '\n';
+    }
+
+    return report.exit_code;
 }
 
 } // namespace
@@ -151,16 +214,16 @@ int main(int argc, char* argv[])
 {
     try
     {
-        return run(argc, argv);
+        return runMain(argc, argv);
     }
     catch (const std::exception& ex)
     {
-        std::cerr << "未处理异常: " << ex.what() << '\n';
+        std::cerr << "Unhandled exception: " << ex.what() << '\n';
         return 1;
     }
     catch (...)
     {
-        std::cerr << "未处理的未知异常\n";
+        std::cerr << "Unhandled unknown exception\n";
         return 1;
     }
 }

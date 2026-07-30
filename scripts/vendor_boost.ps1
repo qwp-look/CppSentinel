@@ -14,6 +14,10 @@
 
 .PARAMETER Modules
     bcp module list (default: process).
+
+.PARAMETER Msys2Root
+    MSYS2 installation root used for bash/g++ while building bcp.
+    Defaults to $env:MSYS2_ROOT, then $env:MSYS2_PATH, then C:\msys64.
 #>
 [CmdletBinding()]
 param(
@@ -22,7 +26,9 @@ param(
 
     [string]$OutDir = "",
 
-    [string[]]$Modules = @("process")
+    [string[]]$Modules = @("process"),
+
+    [string]$Msys2Root = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -31,9 +37,34 @@ function Resolve-RepoRoot {
     Split-Path -Parent (Split-Path -Parent $PSCommandPath)
 }
 
+function Resolve-Msys2Root {
+    param([string]$Explicit)
+    if (-not [string]::IsNullOrWhiteSpace($Explicit)) {
+        return (Resolve-Path $Explicit).Path
+    }
+    if (-not [string]::IsNullOrWhiteSpace($env:MSYS2_ROOT)) {
+        return $env:MSYS2_ROOT
+    }
+    if (-not [string]::IsNullOrWhiteSpace($env:MSYS2_PATH)) {
+        return $env:MSYS2_PATH
+    }
+    if (Test-Path "C:\msys64") {
+        return "C:\msys64"
+    }
+    throw "MSYS2 root not found. Pass -Msys2Root or set MSYS2_ROOT."
+}
+
 $repoRoot = Resolve-RepoRoot
 if ([string]::IsNullOrWhiteSpace($OutDir)) {
     $OutDir = Join-Path $repoRoot "third_party\boost"
+}
+
+$msysRoot = Resolve-Msys2Root -Explicit $Msys2Root
+$bash = Join-Path $msysRoot "usr\bin\bash.exe"
+$mingwBin = Join-Path $msysRoot "mingw64\bin"
+$usrBin = Join-Path $msysRoot "usr\bin"
+if (-not (Test-Path $bash)) {
+    throw "bash.exe not found under MSYS2 root: $msysRoot"
 }
 
 $BoostSource = (Resolve-Path $BoostSource).Path
@@ -41,13 +72,13 @@ if (-not (Test-Path (Join-Path $BoostSource "boost"))) {
     throw "BoostSource does not look like a Boost root (missing 'boost/' ): $BoostSource"
 }
 
-$env:PATH = "C:\msys64\mingw64\bin;C:\msys64\usr\bin;" + $env:PATH
+$env:PATH = "$mingwBin;$usrBin;" + $env:PATH
 
 Push-Location $BoostSource
 try {
     if (-not (Test-Path ".\b2.exe") -and -not (Test-Path ".\b2")) {
-        Write-Host "==> bootstrap.sh --with-toolset=gcc"
-        & "C:\msys64\usr\bin\bash.exe" -lc "./bootstrap.sh --with-toolset=gcc"
+        Write-Host "==> bootstrap.sh --with-toolset=gcc (MSYS2=$msysRoot)"
+        & $bash -lc "./bootstrap.sh --with-toolset=gcc"
         if ($LASTEXITCODE -ne 0) { throw "bootstrap failed" }
     }
 
@@ -56,7 +87,7 @@ try {
 
     if (-not $bcp) {
         Write-Host "==> b2 tools/bcp"
-        & "C:\msys64\usr\bin\bash.exe" -lc "./b2 tools/bcp toolset=gcc variant=release link=static -j4"
+        & $bash -lc "./b2 tools/bcp toolset=gcc variant=release link=static -j4"
         if ($LASTEXITCODE -ne 0) { throw "b2 tools/bcp failed" }
         $bcp = Get-ChildItem -Recurse -Filter "bcp.exe" |
             Select-Object -First 1 -ExpandProperty FullName
@@ -73,8 +104,6 @@ try {
     }
     New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
-    $boostUnix = ($BoostSource -replace '\\', '/') -replace '^([A-Za-z]):', { "/$($args[0].Groups[1].Value.ToLower())" }
-    # Simpler path for --boost on Windows: pass native path; bcp accepts it.
     Write-Host "==> bcp $($Modules -join ' ') -> $OutDir"
     & $bcp --boost="$BoostSource" @Modules $OutDir
     if ($LASTEXITCODE -ne 0) { throw "bcp failed with exit $LASTEXITCODE" }
@@ -88,6 +117,7 @@ try {
     @"
 Vendored by scripts/vendor_boost.ps1
 Boost source : $BoostSource
+MSYS2 root   : $msysRoot
 Modules      : $($Modules -join ', ')
 bcp          : $bcp
 $verLine

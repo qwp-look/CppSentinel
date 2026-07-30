@@ -2,101 +2,71 @@
 
 > 英文版：[boost_vendor.md](boost_vendor.md)
 
-CppSentinel 使用 **Boost.Process v2**（以及它依赖的 Asio / System 等）。
-相关头文件与少量 Process 源文件通过 bcp 内嵌到：
+CppSentinel 使用 **Boost.Process v2**（以及 Asio / System 等依赖）启动子进程、
+捕获退出码并支持超时。相关头文件与 Process 源码通过 bcp 内嵌到：
 
 ```text
-third_party/boost/          # bcp 输出：boost/ 头文件 + libs/ 源码
+third_party/boost/          # bcp 输出：boost/ 头文件 + libs/process 源码
 ```
 
-因此构建时不需要完整安装系统 Boost **头文件**。
-Process 的 `.cpp` 会编进 `CppSentinel` 目标。
+因此构建**不需要**系统安装的 Boost 头文件或库。
+Process 的 `.cpp` 由 `cppsentinel_core` 一并编译。
 
 ## 为什么用 bcp？
 
 [`bcp`](https://www.boost.org/doc/libs/release/tools/bcp/doc/html/index.html)
-只复制模块列表**真正需要**的 Boost 文件，而不是整包 Boost。
+只复制模块列表真正需要的 Boost 文件，而不是整包 Boost。
 
 ## 一键刷新（Windows / MSYS2 MinGW）
 
 前提：
 
-- Boost 发行源码树（与目标版本一致，例如 1.91.0）
-- 能编译 `tools/bcp` 的 MinGW g++
+- Boost 发行源码树（例如 1.91.0）
+- 能编译 `tools/bcp` 的 MinGW g++（通过 MSYS2）
 
 ```powershell
 # 在仓库根目录
-.\scripts\vendor_boost.ps1 -BoostSource "C:\path\to\boost_1_91_0"
+.\scripts\vendor_boost.ps1 `
+  -BoostSource "C:\path\to\boost_1_91_0" `
+  -Msys2Root "C:\msys64"
 ```
 
-或手动：
-
-```powershell
-cd C:\path\to\boost_1_91_0
-
-# 1) 编译 bcp
-.\bootstrap.bat gcc
-.\b2 tools/bcp toolset=gcc
-
-# 2) 抽出 CppSentinel 需要的模块
-#    process 会自动带上 asio/system/…
-$out = "C:\path\to\CppSentinel\third_party\boost"
-Remove-Item $out -Recurse -Force -ErrorAction SilentlyContinue
-New-Item -ItemType Directory -Path $out | Out-Null
-
-.\dist\bin\bcp.exe `
-  --boost=C:\path\to\boost_1_91_0 `
-  process `
-  $out
-```
-
-常用 bcp 参数：
-
-| 参数 | 作用 |
+| 参数 | 含义 |
 |------|------|
-| `--boost=<root>` | 含 `boost/` 与 `libs/` 的 Boost 根目录 |
-| `--list` | 只列出文件，不复制 |
-| `--cvs` | 包含 CVS/git 额外文件（一般不需要） |
+| `-BoostSource` | Boost 源码根（含 `boost/`、`libs/`） |
+| `-OutDir` | 输出目录，默认 `third_party/boost` |
+| `-Modules` | bcp 模块列表，默认 `process` |
+| `-Msys2Root` | MSYS2 根；也可设 `MSYS2_ROOT` / `MSYS2_PATH`，再回退 `C:\msys64` |
 
-## 内嵌了什么
-
-主模块：
-
-- `process`（Boost.Process v2）
-
-常见传递依赖头文件（不完全列举）：
-
-- `asio`、`system`、`config`、`core`、`assert`、`winapi`、`mp11` …
-- 可能出现 `filesystem` 头文件；工程定义了
-  `BOOST_PROCESS_USE_STD_FS`，**运行时使用 `std::filesystem`**。
-
-`third_party/boost/libs/process/src/` 下的 Process `.cpp` 由根目录
-`CMakeLists.txt` 编译。
+脚本会：在 Boost 树中引导/查找 `bcp` → 抽出模块 → 写入 `BCP_VERSION.txt`。
 
 ## CMake 集成
 
-```cmake
-target_include_directories(CppSentinel PRIVATE
-    third_party          # toml.hpp
-    third_party/boost    # 内嵌 boost/ ...
-)
+源文件列表与宏集中在 [`cmake/BoostProcess.cmake`](../cmake/BoostProcess.cmake)：
 
-target_compile_definitions(CppSentinel PRIVATE
-    BOOST_PROCESS_USE_STD_FS=1
-    BOOST_PROCESS_NO_LIB=1
-)
+```cmake
+include(cmake/BoostProcess.cmake)
+# ...
+add_library(cppsentinel_core STATIC ... ${CPPSENTINEL_BOOST_PROCESS_SOURCES})
+cppsentinel_configure_boost_process(cppsentinel_core)
 ```
 
-`BOOST_PROCESS_NO_LIB` 关闭 MSVC 自动链接 pragma。
-源文件显式列入目标，MinGW / MSVC 行为一致。
+关键定义：
 
-## 版本策略
+| 宏 | 作用 |
+|----|------|
+| `BOOST_PROCESS_USE_STD_FS` | 运行时使用 `std::filesystem` |
+| `BOOST_PROCESS_NO_LIB` / `BOOST_ALL_NO_LIB` | 关闭自动链接 |
+| `BOOST_PROCESS_STATIC_LINK` | 静态链接语义 |
+| `BOOST_PROCESS_SOURCE` | 仅加在 Process `.cpp` 上 |
 
-- 在 `third_party/boost/BCP_VERSION.txt` 记录 Boost 版本。
-- 升级 Process API 时优先重新跑 bcp。
-- **不要**混用 A 版本内嵌头文件与 B 版本系统 `libboost_process`。
+Windows 下还会链接 `ws2_32`、`ntdll`、`shell32`、`advapi32`、`user32`、`bcrypt`。
 
-## 许可证
+## 内嵌了什么
 
-Boost 使用 **Boost Software License 1.0**。bcp 树中通常带有
-`LICENSE_1_0.txt`。
+主模块：`process`（Boost.Process v2）。
+
+常见传递依赖头（不完全列举）：`asio`、`system`、`config`、`core`、`assert`、
+`winapi`、`mp11` 等。可能出现 `filesystem` 头文件，但运行时仍走 `std::filesystem`。
+
+实现代码位于 `third_party/boost/libs/process/src/`（含 Windows/POSIX 细节与 ext 源）。
