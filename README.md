@@ -154,6 +154,10 @@ Normalization applied by the unified layer:
   the finding list into `notes`
 - **Trust warnings** when a checker timed out or failed to start, so a partial run
   is never mistaken for a clean one
+- **Provenance**: each tool's `--version` is recorded in `metadata.tool_versions`
+- **Snippets**: the offending source line travels with the finding
+- **Fix-its**: clang-tidy replacements become `fixes[]` in `report.json` and
+  `fixes` in SARIF, so results are machine-applicable
 
 `report.json` is `summary` (severity/category/file/rule rollups) plus `findings`.
 

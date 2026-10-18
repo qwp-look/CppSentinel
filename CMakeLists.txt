@@ -36,12 +36,16 @@ add_library(cppsentinel_core STATIC
     src/report/Findings.cpp
     src/report/Filter.cpp
     src/report/Baseline.cpp
+    src/report/SourceContext.cpp
+    src/report/FixParser.cpp
     src/report/JsonReporter.cpp
     src/report/SarifReporter.cpp
     src/report/MarkdownReporter.cpp
     src/report/ConsoleReporter.cpp
     src/report/ReportWriter.cpp
     src/core/CheckerRegistry.cpp
+    src/core/BuiltinTools.cpp
+    src/core/ToolProbe.cpp
     src/core/Doctor.cpp
     src/core/Engine.cpp
     src/checker/DiagnosticParser.cpp

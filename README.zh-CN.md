@@ -149,6 +149,9 @@ report/<run-id>/
 - **注释归位**：clang/gcc 的 `note:` 行挂到所属诊断下，不再单列为问题
 - **元信息隔离**：`checkersReport`、`unmatchedSuppression` 等工具自述信息移出问题列表，进入 `notes`
 - **可信度提示**：超时/启动失败/配置错误的 checker 会在 `notes` 中显式标注"结果可能不完整"
+- **版本溯源**：每个工具的 `--version` 写入 `metadata.tool_versions`
+- **代码片段**：每条 finding 带上出错行原文（`snippet`）
+- **自动修复建议**：clang-tidy 的 replacement 转成 `fixes[]`，SARIF 也带 `fixes`
 
 `report.json` 顶层为 `summary`（按严重度/类别/文件/规则的汇总）+ `findings`（排序后的明细）。
 

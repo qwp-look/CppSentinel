@@ -142,6 +142,21 @@ struct BaselineInfo
     std::vector<FixedFinding> fixed;
 };
 
+/// One machine-applicable text replacement (clang-tidy fix-it).
+struct FixReplacement
+{
+    std::filesystem::path file;
+    long long offset = 0; ///< byte offset as reported by the tool
+    long long length = 0;
+    std::string text;     ///< replacement text (may be empty = deletion)
+};
+
+struct Fix
+{
+    std::string description;
+    std::vector<FixReplacement> replacements;
+};
+
 /// A normalized finding: one row in the report, independent of which tool found it.
 struct Finding
 {
@@ -153,10 +168,12 @@ struct Finding
     std::string category;
     std::string rule; ///< tool rule id; falls back to checker kind
     std::string message;
+    std::string snippet; ///< trimmed source line at `line`, when readable
     std::vector<std::string> tools; ///< contributing checker kinds, sorted
     std::vector<std::string> related_notes; ///< attached "note:" context lines
     std::size_t occurrences = 1;    ///< collapsed duplicates (e.g. header per TU)
     BaselineStatus baseline = BaselineStatus::NotCompared;
+    std::vector<Fix> fixes; ///< machine-applicable replacements, when the tool has them
 };
 
 /// Comparable ordering for severity (lower rank = more severe).

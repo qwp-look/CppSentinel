@@ -113,6 +113,18 @@ std::string metadataJson(const RunMetadata& metadata)
     b.add("started_at", jsonString(metadata.started_at));
     b.add("finished_at", jsonString(metadata.finished_at));
     b.add("duration_ms", number(metadata.duration.count()));
+
+    std::vector<std::string> versions;
+    versions.reserve(metadata.tool_versions.size());
+    for (const auto& tool : metadata.tool_versions)
+    {
+        ObjectBuilder entry;
+        entry.add("checker_id", jsonString(tool.checker_id));
+        entry.add("executable", jsonString(tool.executable));
+        entry.add("version", jsonString(tool.version));
+        versions.push_back(entry.build());
+    }
+    b.add("tool_versions", arrayOf(versions));
     return b.build();
 }
 
@@ -275,9 +287,39 @@ std::string serializeUnifiedReportJson(const UnifiedReport& report)
         f.add("tools", stringArray(finding.tools));
         f.add("notes", stringArray(finding.related_notes));
         f.add("occurrences", number(static_cast<long long>(finding.occurrences)));
+        if (!finding.snippet.empty())
+        {
+            f.add("snippet", jsonString(finding.snippet));
+        }
         if (finding.baseline != BaselineStatus::NotCompared)
         {
             f.add("baseline", jsonString(toString(finding.baseline)));
+        }
+        if (!finding.fixes.empty())
+        {
+            std::vector<std::string> fixes;
+            fixes.reserve(finding.fixes.size());
+            for (const auto& fix : finding.fixes)
+            {
+                ObjectBuilder fixObject;
+                fixObject.add("description", jsonString(fix.description));
+                std::vector<std::string> replacements;
+                replacements.reserve(fix.replacements.size());
+                for (const auto& replacement : fix.replacements)
+                {
+                    ObjectBuilder r;
+                    r.add("file", quotedPath(replacement.file));
+                    r.add("offset",
+                          number(static_cast<long long>(replacement.offset)));
+                    r.add("length",
+                          number(static_cast<long long>(replacement.length)));
+                    r.add("text", jsonString(replacement.text));
+                    replacements.push_back(r.build());
+                }
+                fixObject.add("replacements", arrayOf(replacements));
+                fixes.push_back(fixObject.build());
+            }
+            f.add("fixes", arrayOf(fixes));
         }
         findings.push_back(f.build());
     }

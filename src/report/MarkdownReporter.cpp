@@ -189,6 +189,22 @@ void writingToolRuns(std::ostringstream& oss, const UnifiedReport& report)
             << " |\n";
     }
     oss << '\n';
+
+    if (!report.metadata.tool_versions.empty())
+    {
+        oss << "Tool versions: ";
+        bool first = true;
+        for (const auto& tool : report.metadata.tool_versions)
+        {
+            if (!first)
+            {
+                oss << "; ";
+            }
+            oss << code(tool.checker_id) << " " << inlineText(tool.version);
+            first = false;
+        }
+        oss << "\n\n";
+    }
 }
 
 void writingTopRules(std::ostringstream& oss, const UnifiedReport& report)
@@ -307,6 +323,17 @@ void writingFindings(std::ostringstream& oss, const UnifiedReport& report)
             oss << " _[" << inlineText(tools) << "]_";
         }
         oss << '\n';
+
+        if (!finding.snippet.empty())
+        {
+            oss << "  - source: `" << cell(finding.snippet) << "`\n";
+        }
+        if (!finding.fixes.empty())
+        {
+            oss << "  - fix available: "
+                << finding.fixes.front().replacements.size()
+                << " replacement(s)\n";
+        }
 
         for (const auto& note : finding.related_notes)
         {

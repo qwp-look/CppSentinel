@@ -2,13 +2,19 @@
 
 #include "cppsentinel/core/Engine.h"
 
+#include "cppsentinel/core/BuiltinTools.h"
+#include "cppsentinel/core/ToolProbe.h"
 #include "cppsentinel/process/Msys2ProcessRunner.h"
+#include "cppsentinel/process/PathUtil.h"
 #include "cppsentinel/process/NativeProcessRunner.h"
 #include "cppsentinel/report/Baseline.h"
 #include "cppsentinel/report/Filter.h"
+#include "cppsentinel/report/FixParser.h"
 #include "cppsentinel/report/ReportWriter.h"
+#include "cppsentinel/report/SourceContext.h"
 #include "cppsentinel/util/FileIo.h"
 
+#include <set>
 #include <utility>
 
 namespace cppsentinel
@@ -167,6 +173,8 @@ RunReport Engine::run(const RunRequest& request, UnifiedReport& unifiedOut) cons
     report.metadata.run_id = layout->run_id;
     report.metadata.report_dir = layout->root;
 
+    std::set<std::string> probedVersions;
+
     for (const auto& checkerCfg : request.config.checkers)
     {
         if (!checkerCfg.enabled)
@@ -214,6 +222,32 @@ RunReport Engine::run(const RunRequest& request, UnifiedReport& unifiedOut) cons
         context.timeout = checkerCfg.timeout.count() > 0
                               ? checkerCfg.timeout
                               : request.config.run.timeout_seconds;
+
+        // Provenance: record the tool version once per (environment, executable).
+        // Two machines disagreeing on a finding is almost always a version skew.
+        std::string executable = defaultExecutableForKind(checkerCfg.kind);
+        if (const auto it = checkerCfg.options.find("executable");
+            it != checkerCfg.options.end() && !it->second.empty())
+        {
+            executable = it->second;
+        }
+        const std::string versionKey = checkerCfg.environment + "|" + executable;
+        if (!executable.empty() && probedVersions.insert(versionKey).second)
+        {
+            const auto version = probeToolVersion(
+                context.runner, executable, context.project_root,
+                std::chrono::seconds(15),
+                layout->logs_dir /
+                    ("version-" + sanitizeFileToken(checkerCfg.id)));
+            if (!version.empty())
+            {
+                ToolVersion info;
+                info.checker_id = checkerCfg.id;
+                info.executable = executable;
+                info.version = version;
+                report.metadata.tool_versions.push_back(std::move(info));
+            }
+        }
 
         CheckerResult result;
         try
@@ -263,6 +297,24 @@ RunReport Engine::run(const RunRequest& request, UnifiedReport& unifiedOut) cons
     // Filters run before baseline matching: a suppressed finding is not
     // "known", it is simply not reported.
     applyFilters(unified, request.config.filter, request.config.project.root);
+
+    // Enrich what survived filtering with source context and tool-provided fixes.
+    attachSnippets(unified, request.config.project.root);
+    for (const auto& checker : report.checkers)
+    {
+        for (const auto& artifact : checker.artifacts)
+        {
+            if (artifact.filename() != "clang-tidy-fixes.yaml")
+            {
+                continue;
+            }
+            std::string readError;
+            if (auto text = readTextFile(artifact, readError))
+            {
+                attachFixes(unified, *text, request.config.project.root);
+            }
+        }
+    }
 
     const auto& baselineCfg = request.config.baseline;
     bool baselineActive = false;

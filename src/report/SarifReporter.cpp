@@ -5,6 +5,7 @@
 #include "cppsentinel/report/JsonUtil.h"
 
 #include <cstdint>
+#include <map>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -201,6 +202,12 @@ std::string serializeSarif(const UnifiedReport& report)
             {
                 region.add("startColumn", number(*finding.column));
             }
+            if (!finding.snippet.empty())
+            {
+                ObjectBuilder snippet;
+                snippet.add("text", jsonString(finding.snippet));
+                region.add("snippet", snippet.build());
+            }
             physicalLocation.add("region", region.build());
         }
         ObjectBuilder location;
@@ -223,6 +230,70 @@ std::string serializeSarif(const UnifiedReport& report)
         properties.add("occurrences",
                        number(static_cast<long long>(finding.occurrences)));
         result.add("properties", properties.build());
+
+        if (!finding.fixes.empty())
+        {
+            std::vector<std::string> fixes;
+            fixes.reserve(finding.fixes.size());
+            for (const auto& fix : finding.fixes)
+            {
+                ObjectBuilder fixObject;
+                ObjectBuilder description;
+                description.add("text", jsonString(fix.description.empty()
+                                                       ? "Apply suggested fix"
+                                                       : fix.description));
+                fixObject.add("description", description.build());
+
+                // Group replacements by file: SARIF changes are per artifact.
+                std::vector<std::string> order;
+                std::map<std::string, std::vector<const FixReplacement*>> byFile;
+                for (const auto& replacement : fix.replacements)
+                {
+                    const std::string key = replacement.file.generic_string();
+                    if (byFile.find(key) == byFile.end())
+                    {
+                        order.push_back(key);
+                    }
+                    byFile[key].push_back(&replacement);
+                }
+
+                std::vector<std::string> changes;
+                for (const auto& key : order)
+                {
+                    ObjectBuilder change;
+                    ObjectBuilder location;
+                    location.add("uri", jsonString(json::uriEncodePath(key)));
+                    if (!key.empty() && key.front() != '/')
+                    {
+                        location.add("uriBaseId", jsonString("%SRCROOT%"));
+                    }
+                    change.add("artifactLocation", location.build());
+
+                    std::vector<std::string> replacements;
+                    for (const auto* replacement : byFile[key])
+                    {
+                        ObjectBuilder entry;
+                        ObjectBuilder deletedRegion;
+                        deletedRegion.add(
+                            "charOffset",
+                            number(static_cast<long long>(replacement->offset)));
+                        deletedRegion.add(
+                            "charLength",
+                            number(static_cast<long long>(replacement->length)));
+                        entry.add("deletedRegion", deletedRegion.build());
+                        ObjectBuilder inserted;
+                        inserted.add("text", jsonString(replacement->text));
+                        entry.add("insertedContent", inserted.build());
+                        replacements.push_back(entry.build());
+                    }
+                    change.add("replacements", arrayOf(replacements));
+                    changes.push_back(change.build());
+                }
+                fixObject.add("artifactChanges", arrayOf(changes));
+                fixes.push_back(fixObject.build());
+            }
+            result.add("fixes", arrayOf(fixes));
+        }
 
         results.push_back(result.build());
     }

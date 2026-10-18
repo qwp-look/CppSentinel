@@ -176,6 +176,14 @@ struct CheckerResult
     std::string message;
 };
 
+/// Version of one tool as reported by `<exe> --version`.
+struct ToolVersion
+{
+    std::string checker_id;
+    std::string executable;
+    std::string version; ///< first non-empty line of --version output
+};
+
 /// Run-level metadata written into report.json.
 struct RunMetadata
 {
@@ -187,6 +195,7 @@ struct RunMetadata
     std::string started_at;
     std::string finished_at;
     std::chrono::milliseconds duration{0};
+    std::vector<ToolVersion> tool_versions; ///< provenance for reproducibility
 };
 
 /// Full machine-readable run result (schema_version 2).

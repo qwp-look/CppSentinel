@@ -2,6 +2,8 @@
 
 #include "cppsentinel/core/Doctor.h"
 
+#include "cppsentinel/core/BuiltinTools.h"
+
 #include "cppsentinel/process/Msys2ProcessRunner.h"
 #include "cppsentinel/report/Baseline.h"
 #include "cppsentinel/report/JsonUtil.h"
@@ -17,32 +19,6 @@ namespace
 {
 
 namespace fs = std::filesystem;
-
-std::string defaultExecutable(const std::string& kind)
-{
-    if (kind == "clang-tidy")
-    {
-        return "clang-tidy";
-    }
-    if (kind == "clang-format")
-    {
-        return "clang-format";
-    }
-    if (kind == "cppcheck")
-    {
-        return "cppcheck";
-    }
-    if (kind == "compiler-diagnostics")
-    {
-        return "c++";
-    }
-    return {};
-}
-
-bool needsCompilationDatabase(const std::string& kind)
-{
-    return kind == "clang-tidy" || kind == "compiler-diagnostics";
-}
 
 bool directoryWritable(const fs::path& directory, std::string& detail)
 {
@@ -129,7 +105,7 @@ DoctorReport runDoctor(const AppConfig& config, const ToolProbe& probe)
     bool needsCdb = false;
     for (const auto& checker : config.checkers)
     {
-        if (checker.enabled && needsCompilationDatabase(checker.kind))
+        if (checker.enabled && checkerNeedsCompilationDatabase(checker.kind))
         {
             needsCdb = true;
             break;
@@ -200,7 +176,7 @@ DoctorReport runDoctor(const AppConfig& config, const ToolProbe& probe)
             continue;
         }
 
-        std::string executable = defaultExecutable(checker.kind);
+        std::string executable = defaultExecutableForKind(checker.kind);
         if (const auto it = checker.options.find("executable");
             it != checker.options.end() && !it->second.empty())
         {

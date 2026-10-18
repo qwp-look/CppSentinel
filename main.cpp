@@ -9,11 +9,15 @@
 #include "cppsentinel/config/ConfigLoader.h"
 #include "cppsentinel/core/CheckerRegistry.h"
 #include "cppsentinel/core/Doctor.h"
+#include "cppsentinel/core/ToolProbe.h"
 #include "cppsentinel/core/Engine.h"
+#include "cppsentinel/process/Msys2ProcessRunner.h"
+#include "cppsentinel/process/NativeProcessRunner.h"
 #include "cppsentinel/report/ConsoleReporter.h"
 #include "cppsentinel/report/Findings.h"
 #include "cppsentinel/util/FileIo.h"
 
+#include <chrono>
 #include <exception>
 #include <filesystem>
 #include <iostream>
@@ -226,7 +230,26 @@ int runDoctorCommand(const CliArgs& args)
         return 1;
     }
 
-    const auto report = cppsentinel::runDoctor(loaded.config);
+    // Real tool probes: build the same runner the run would use, then ask
+    // each configured executable for its version.
+    const auto projectRoot = loaded.config.project.root;
+    cppsentinel::ToolProbe probe =
+        [projectRoot](const std::string&, const cppsentinel::EnvironmentProfile& env,
+                      const std::string& executable) -> std::string {
+        cppsentinel::ProcessRunnerPtr runner;
+        if (env.kind == cppsentinel::EnvironmentKind::Msys2)
+        {
+            runner = std::make_shared<cppsentinel::Msys2ProcessRunner>(env);
+        }
+        else
+        {
+            runner = std::make_shared<cppsentinel::NativeProcessRunner>();
+        }
+        return cppsentinel::probeToolVersion(runner, executable, projectRoot,
+                                             std::chrono::seconds(15));
+    };
+
+    const auto report = cppsentinel::runDoctor(loaded.config, probe);
     std::cout << (args.json ? cppsentinel::formatDoctorJson(report)
                             : cppsentinel::formatDoctorText(report));
     if (args.json)
