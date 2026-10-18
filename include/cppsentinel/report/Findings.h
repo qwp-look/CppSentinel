@@ -2,11 +2,12 @@
 
 // Unified, tool-independent view of a run.
 //
-// RunReport keeps the raw per-checker diagnostics (traceability). This layer turns
-// them into a single normalized finding list: paths made project-relative,
-// severities and rule ids unified, duplicates collapsed, stable ids assigned and
-// rollups computed. Every reporter (json/sarif/markdown/console) reads this
-// instead of re-deriving from tool output.
+// RunReport keeps the raw per-checker diagnostics (traceability). This layer
+// turns them into a single normalized finding list: paths made
+// project-relative, severities and rule ids unified, duplicates collapsed,
+// stable ids assigned and rollups computed. Every reporter
+// (json/sarif/markdown/console) reads this instead of re-deriving from tool
+// output.
 
 #include "cppsentinel/report/Types.h"
 
@@ -81,9 +82,9 @@ struct FindingsSummary
     std::size_t total_findings = 0;  ///< distinct findings after dedup
     std::size_t raw_diagnostics = 0; ///< diagnostics seen before normalization
     std::size_t deduplicated = 0;    ///< raw collapsed into duplicate findings
-    std::size_t attached_notes = 0;  ///< "note:" lines merged as finding context
-    std::size_t tool_notices = 0;    ///< tool meta messages kept out of findings
-    std::size_t suppressed = 0;      ///< findings dropped by filters
+    std::size_t attached_notes = 0; ///< "note:" lines merged as finding context
+    std::size_t tool_notices = 0;   ///< tool meta messages kept out of findings
+    std::size_t suppressed = 0;     ///< findings dropped by filters
     std::size_t affected_files = 0;
     SeverityCounts severity;
     std::vector<FileFindingSummary> files; ///< sorted: total desc, then path
@@ -120,7 +121,8 @@ struct SuppressedFinding
     std::filesystem::path file;
     std::optional<std::uint32_t> line;
     std::string rule;
-    std::string reason; ///< e.g. "config:ignore_rules" or "inline:disable-next-line"
+    std::string
+        reason; ///< e.g. "config:ignore_rules" or "inline:disable-next-line"
 };
 
 /// A baseline entry that no longer appears in this run.
@@ -148,7 +150,7 @@ struct FixReplacement
     std::filesystem::path file;
     long long offset = 0; ///< byte offset as reported by the tool
     long long length = 0;
-    std::string text;     ///< replacement text (may be empty = deletion)
+    std::string text; ///< replacement text (may be empty = deletion)
 };
 
 struct Fix
@@ -157,10 +159,11 @@ struct Fix
     std::vector<FixReplacement> replacements;
 };
 
-/// A normalized finding: one row in the report, independent of which tool found it.
+/// A normalized finding: one row in the report, independent of which tool found
+/// it.
 struct Finding
 {
-    std::string id; ///< stable fingerprint, e.g. CS-1A2B3C4D5E6F
+    std::string id;             ///< stable fingerprint, e.g. CS-1A2B3C4D5E6F
     std::filesystem::path file; ///< project-root relative when resolvable
     std::optional<std::uint32_t> line;
     std::optional<std::uint32_t> column;
@@ -171,9 +174,10 @@ struct Finding
     std::string snippet; ///< trimmed source line at `line`, when readable
     std::vector<std::string> tools; ///< contributing checker kinds, sorted
     std::vector<std::string> related_notes; ///< attached "note:" context lines
-    std::size_t occurrences = 1;    ///< collapsed duplicates (e.g. header per TU)
+    std::size_t occurrences = 1; ///< collapsed duplicates (e.g. header per TU)
     BaselineStatus baseline = BaselineStatus::NotCompared;
-    std::vector<Fix> fixes; ///< machine-applicable replacements, when the tool has them
+    std::vector<Fix>
+        fixes; ///< machine-applicable replacements, when the tool has them
 };
 
 /// Comparable ordering for severity (lower rank = more severe).
@@ -185,8 +189,9 @@ std::string categoryForRule(std::string_view rule);
 /// Make a diagnostic path project-relative and '/'-separated when possible.
 /// Paths outside project_root and already-relative paths are kept as given
 /// (only normalized separators).
-std::filesystem::path normalizeFindingPath(const std::filesystem::path& file,
-                                           const std::filesystem::path& project_root);
+std::filesystem::path
+normalizeFindingPath(const std::filesystem::path& file,
+                     const std::filesystem::path& project_root);
 
 struct NormalizeOptions
 {
@@ -201,7 +206,8 @@ struct UnifiedReport
     int exit_code = 0;
     FindingsSummary summary;
     BaselineInfo baseline;
-    std::vector<Finding> findings; ///< sorted by file, line, column, severity, rule
+    std::vector<Finding>
+        findings; ///< sorted by file, line, column, severity, rule
     std::vector<SuppressedFinding> suppressed; ///< dropped by filters
     std::vector<CheckerRunSummary> checkers;
     std::vector<std::string> notes; ///< normalization / trust warnings

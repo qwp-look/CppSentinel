@@ -74,8 +74,8 @@ std::string formatUnifiedSummary(const UnifiedReport& report)
     oss << "CppSentinel run " << report.metadata.run_id << '\n';
     oss << "target : " << report.metadata.target_path.generic_string() << '\n';
     oss << "report : " << report.metadata.report_dir.generic_string() << '\n';
-    oss << "verdict: " << (report.exit_code == 0 ? "PASS" : "FAIL")
-        << " (exit " << report.exit_code << ")\n";
+    oss << "verdict: " << (report.exit_code == 0 ? "PASS" : "FAIL") << " (exit "
+        << report.exit_code << ")\n";
     oss << "duration_ms : " << report.metadata.duration.count() << '\n';
     oss << '\n';
 
@@ -86,7 +86,8 @@ std::string formatUnifiedSummary(const UnifiedReport& report)
     {
         oss << " (";
         bool first = true;
-        auto add = [&](std::size_t count, const char* label) {
+        auto add = [&](std::size_t count, const char* label)
+        {
             if (count == 0)
             {
                 return;
@@ -166,8 +167,9 @@ std::string formatUnifiedSummary(const UnifiedReport& report)
                 break;
             }
             oss << "  " << file.counts.total() << "x "
-                << file.file.generic_string() << "  (error="
-                << file.counts.error << " warning=" << file.counts.warning
+                << file.file.generic_string()
+                << "  (error=" << file.counts.error
+                << " warning=" << file.counts.warning
                 << " style=" << file.counts.style << ")\n";
             ++shown;
         }

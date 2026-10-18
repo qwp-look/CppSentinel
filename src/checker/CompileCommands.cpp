@@ -220,12 +220,10 @@ bool pathsEqual(const fs::path& a, const fs::path& b)
     auto sa = normalizePath(a).generic_string();
     auto sb = normalizePath(b).generic_string();
 #ifdef _WIN32
-    std::transform(sa.begin(), sa.end(), sa.begin(), [](unsigned char c) {
-        return static_cast<char>(std::tolower(c));
-    });
-    std::transform(sb.begin(), sb.end(), sb.begin(), [](unsigned char c) {
-        return static_cast<char>(std::tolower(c));
-    });
+    std::transform(sa.begin(), sa.end(), sa.begin(), [](unsigned char c)
+                   { return static_cast<char>(std::tolower(c)); });
+    std::transform(sb.begin(), sb.end(), sb.begin(), [](unsigned char c)
+                   { return static_cast<char>(std::tolower(c)); });
 #endif
     return sa == sb;
 }
@@ -298,8 +296,8 @@ std::vector<std::string> splitCommandLine(const std::string& command)
     return args;
 }
 
-std::vector<CompileCommand>
-loadCompileCommands(const fs::path& path, std::string& errorMessage)
+std::vector<CompileCommand> loadCompileCommands(const fs::path& path,
+                                                std::string& errorMessage)
 {
     auto text = readTextFile(path, errorMessage);
     if (!text)

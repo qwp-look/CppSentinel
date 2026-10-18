@@ -38,10 +38,13 @@ inline std::string escape(std::string_view input)
             if (static_cast<unsigned char>(c) < 0x20)
             {
                 char buf[8];
-                std::snprintf(
+                const int written = std::snprintf(
                     buf, sizeof(buf), "\\u%04x",
                     static_cast<unsigned>(static_cast<unsigned char>(c)));
-                out += buf;
+                if (written > 0)
+                {
+                    out.append(buf, static_cast<std::size_t>(written));
+                }
             }
             else
             {

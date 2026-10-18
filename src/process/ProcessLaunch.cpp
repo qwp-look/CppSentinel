@@ -96,22 +96,26 @@ ProcessResult launchProcess(const fs::path& executable,
         if (timeout.count() > 0)
         {
             timer.expires_after(timeout);
-            timer.async_wait([&](const boost::system::error_code& ec) {
-                if (ec)
+            timer.async_wait(
+                [&](const boost::system::error_code& ec)
                 {
-                    return;
-                }
-                timedOut = true;
-                boost::system::error_code termEc;
-                proc->terminate(termEc);
-            });
+                    if (ec)
+                    {
+                        return;
+                    }
+                    timedOut = true;
+                    boost::system::error_code termEc;
+                    proc->terminate(termEc);
+                });
         }
 
-        proc->async_wait([&](const boost::system::error_code& ec, int code) {
-            waitEc = ec;
-            exitCode = code;
-            timer.cancel();
-        });
+        proc->async_wait(
+            [&](const boost::system::error_code& ec, int code)
+            {
+                waitEc = ec;
+                exitCode = code;
+                timer.cancel();
+            });
 
         ctx.run();
 
@@ -152,7 +156,8 @@ ProcessResult launchProcess(const fs::path& executable,
         result.duration = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - started);
         result.state = ProcessState::StartError;
-        result.error_message = std::string("failed to start process: ") + e.what();
+        result.error_message =
+            std::string("failed to start process: ") + e.what();
         return result;
     }
     catch (const std::exception& e)
@@ -160,7 +165,8 @@ ProcessResult launchProcess(const fs::path& executable,
         result.duration = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - started);
         result.state = ProcessState::StartError;
-        result.error_message = std::string("failed to start process: ") + e.what();
+        result.error_message =
+            std::string("failed to start process: ") + e.what();
         return result;
     }
 }

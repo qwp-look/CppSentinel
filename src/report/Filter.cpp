@@ -28,9 +28,9 @@ bool containsInsensitive(std::string_view haystack, std::string_view needle)
     {
         return false;
     }
-    const auto it = std::search(
-        haystack.begin(), haystack.end(), needle.begin(), needle.end(),
-        [](char a, char b) { return lowerAscii(a) == lowerAscii(b); });
+    const auto it = std::search(haystack.begin(), haystack.end(),
+                                needle.begin(), needle.end(), [](char a, char b)
+                                { return lowerAscii(a) == lowerAscii(b); });
     return it != haystack.end();
 }
 
@@ -89,8 +89,8 @@ bool globMatchImpl(std::string_view pattern, std::string_view text)
 
 struct Directive
 {
-    std::uint32_t line = 0;   ///< line the comment sits on
-    bool restOfFile = true;   ///< "disable" vs "disable-next-line"
+    std::uint32_t line = 0;         ///< line the comment sits on
+    bool restOfFile = true;         ///< "disable" vs "disable-next-line"
     std::vector<std::string> rules; ///< empty = all rules
 };
 
@@ -164,10 +164,10 @@ DirectiveList parseDirectives(std::string_view source)
 
         // A bare "//" token comes from a stray comment marker.
         directive.rules.erase(
-            std::remove_if(directive.rules.begin(), directive.rules.end(),
-                           [](const std::string& rule) {
-                               return rule == "//" || rule == "/*" || rule.empty();
-                           }),
+            std::remove_if(
+                directive.rules.begin(), directive.rules.end(),
+                [](const std::string& rule)
+                { return rule == "//" || rule == "/*" || rule.empty(); }),
             directive.rules.end());
 
         directives.push_back(std::move(directive));
@@ -181,7 +181,7 @@ bool directivesSuppress(const DirectiveList& directives, std::uint32_t line,
     for (const auto& directive : directives)
     {
         const bool inScope = directive.restOfFile ? line >= directive.line
-                                                 : line == directive.line + 1;
+                                                  : line == directive.line + 1;
         if (!inScope)
         {
             continue;

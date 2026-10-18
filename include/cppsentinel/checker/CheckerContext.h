@@ -20,12 +20,12 @@ struct CheckerContext
     const CheckerConfig* checker = nullptr;
     const EnvironmentProfile* environment = nullptr;
     ProcessRunnerPtr runner;
-    std::filesystem::path target;                 ///< CLI --target
-    std::vector<std::filesystem::path> files;     ///< expanded target files
+    std::filesystem::path target;             ///< CLI --target
+    std::vector<std::filesystem::path> files; ///< expanded target files
     std::filesystem::path project_root;
-    std::filesystem::path report_dir;             ///< report/<run-id>/
-    std::filesystem::path logs_dir;               ///< report/<run-id>/logs/
-    std::filesystem::path artifacts_dir;          ///< report/<run-id>/artifacts/<id>/
+    std::filesystem::path report_dir;    ///< report/<run-id>/
+    std::filesystem::path logs_dir;      ///< report/<run-id>/logs/
+    std::filesystem::path artifacts_dir; ///< report/<run-id>/artifacts/<id>/
     std::filesystem::path compilation_database;
     std::chrono::seconds timeout{120};
 };

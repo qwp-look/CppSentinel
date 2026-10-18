@@ -1,6 +1,7 @@
 #pragma once
 
-// Finding filters: config-level ignore lists plus in-source suppression comments.
+// Finding filters: config-level ignore lists plus in-source suppression
+// comments.
 //
 // Supported comment directives (rule list optional, comma/space separated):
 //   // cppsentinel-disable-next-line <rule>[,<rule>]   suppress the next line

@@ -9,7 +9,7 @@ namespace cppsentinel
 
 class NativeProcessRunner final : public ProcessRunner
 {
-public:
+  public:
     ProcessResult run(const ProcessRequest& request) const override;
 };
 

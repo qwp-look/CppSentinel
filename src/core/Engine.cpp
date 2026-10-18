@@ -7,8 +7,8 @@
 #include "cppsentinel/core/TargetEnumerator.h"
 #include "cppsentinel/core/ToolProbe.h"
 #include "cppsentinel/process/Msys2ProcessRunner.h"
-#include "cppsentinel/process/PathUtil.h"
 #include "cppsentinel/process/NativeProcessRunner.h"
+#include "cppsentinel/process/PathUtil.h"
 #include "cppsentinel/report/Baseline.h"
 #include "cppsentinel/report/Filter.h"
 #include "cppsentinel/report/FixParser.h"
@@ -144,7 +144,8 @@ RunReport Engine::run(const RunRequest& request) const
     return run(request, ignored);
 }
 
-RunReport Engine::run(const RunRequest& request, UnifiedReport& unifiedOut) const
+RunReport Engine::run(const RunRequest& request,
+                      UnifiedReport& unifiedOut) const
 {
     RunReport report;
     report.schema_version = 2;
@@ -179,9 +180,9 @@ RunReport Engine::run(const RunRequest& request, UnifiedReport& unifiedOut) cons
     report.metadata.report_dir = layout->root;
 
     // Expand the target once so every checker analyses the same file set.
-    const auto targets = enumerateTargets(
-        request.target, request.config.project.root,
-        request.config.filter.ignore_paths);
+    const auto targets =
+        enumerateTargets(request.target, request.config.project.root,
+                         request.config.filter.ignore_paths);
     std::vector<std::string> runNotes;
     if (targets.excluded > 0)
     {
@@ -210,10 +211,11 @@ RunReport Engine::run(const RunRequest& request, UnifiedReport& unifiedOut) cons
     ResultCache cache(request.config.run.cache_dir, request.config.run.cache);
     const std::string fingerprint =
         cache.enabled() ? projectFingerprint(request.config.project.root)
-                       : std::string{};
+                        : std::string{};
 
-    // Probe each distinct (environment, executable) once, in parallel: launching
-    // an MSYS2 login shell per probe is the dominant cost of a cached run.
+    // Probe each distinct (environment, executable) once, in parallel:
+    // launching an MSYS2 login shell per probe is the dominant cost of a cached
+    // run.
     struct ProbeJob
     {
         std::string key;
@@ -263,7 +265,8 @@ RunReport Engine::run(const RunRequest& request, UnifiedReport& unifiedOut) cons
             const auto root = request.config.project.root;
             const auto executable = probeJob.executable;
             probes.push_back(std::async(std::launch::async,
-                                        [runner, executable, root]() {
+                                        [runner, executable, root]()
+                                        {
                                             return probeToolVersion(
                                                 runner, executable, root,
                                                 std::chrono::seconds(15));
@@ -306,17 +309,17 @@ RunReport Engine::run(const RunRequest& request, UnifiedReport& unifiedOut) cons
             request.config.environments.find(checkerCfg.environment);
         if (envIt == request.config.environments.end())
         {
-            results[i] = makeConfigError(
-                checkerCfg,
-                "unknown environment '" + checkerCfg.environment + "'");
+            results[i] =
+                makeConfigError(checkerCfg, "unknown environment '" +
+                                                checkerCfg.environment + "'");
             continue;
         }
 
         auto checker = registry_.create(checkerCfg);
         if (!checker)
         {
-            results[i] = makeConfigError(
-                checkerCfg, "unknown checker kind '" + checkerCfg.kind + "'");
+            results[i] = makeConfigError(checkerCfg, "unknown checker kind '" +
+                                                         checkerCfg.kind + "'");
             continue;
         }
 
@@ -352,20 +355,23 @@ RunReport Engine::run(const RunRequest& request, UnifiedReport& unifiedOut) cons
         {
             executable = it->second;
         }
-        const std::string versionKey = checkerCfg.environment + "|" + executable;
+        const std::string versionKey =
+            checkerCfg.environment + "|" + executable;
 
         if (cache.enabled())
         {
             const auto versionIt = versionByKey.find(versionKey);
-            const std::string versionText =
-                versionIt == versionByKey.end() ? std::string{} : versionIt->second;
+            const std::string versionText = versionIt == versionByKey.end()
+                                                ? std::string{}
+                                                : versionIt->second;
             const std::string key =
                 cache.keyFor(checkerCfg, versionText, fingerprint);
             if (auto cached = cache.load(key))
             {
                 cached->checker_id = checkerCfg.id;
                 cached->checker_kind = checkerCfg.kind;
-                cached->message += cached->message.empty() ? "cached" : " (cached)";
+                cached->message +=
+                    cached->message.empty() ? "cached" : " (cached)";
                 results[i] = std::move(*cached);
                 continue;
             }
@@ -386,9 +392,9 @@ RunReport Engine::run(const RunRequest& request, UnifiedReport& unifiedOut) cons
         wave.reserve(end - start);
         for (std::size_t k = start; k < end; ++k)
         {
-            wave.push_back(std::async(std::launch::async, [&jobs, k]() {
-                return jobs[k].checker->run(jobs[k].context);
-            }));
+            wave.push_back(
+                std::async(std::launch::async, [&jobs, k]()
+                           { return jobs[k].checker->run(jobs[k].context); }));
         }
         for (std::size_t k = start; k < end; ++k)
         {
@@ -441,17 +447,20 @@ RunReport Engine::run(const RunRequest& request, UnifiedReport& unifiedOut) cons
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - wallStart);
 
-    // Normalize into the unified finding layer once; every artifact derives from it.
+    // Normalize into the unified finding layer once; every artifact derives
+    // from it.
     NormalizeOptions normalize;
     normalize.project_root = request.config.project.root;
     auto unified = buildUnifiedReport(report, normalize);
-    unified.notes.insert(unified.notes.begin(), runNotes.begin(), runNotes.end());
+    unified.notes.insert(unified.notes.begin(), runNotes.begin(),
+                         runNotes.end());
 
     // Filters run before baseline matching: a suppressed finding is not
     // "known", it is simply not reported.
     applyFilters(unified, request.config.filter, request.config.project.root);
 
-    // Enrich what survived filtering with source context and tool-provided fixes.
+    // Enrich what survived filtering with source context and tool-provided
+    // fixes.
     attachSnippets(unified, request.config.project.root);
     for (const auto& checker : report.checkers)
     {
@@ -482,10 +491,9 @@ RunReport Engine::run(const RunRequest& request, UnifiedReport& unifiedOut) cons
         {
             applyBaseline(unified, data, baselineCfg.path);
             baselineActive = true;
-            unified.notes.push_back("baseline updated: " +
-                                    baselineCfg.path.string() + " (" +
-                                    std::to_string(data.findings.size()) +
-                                    " findings recorded)");
+            unified.notes.push_back(
+                "baseline updated: " + baselineCfg.path.string() + " (" +
+                std::to_string(data.findings.size()) + " findings recorded)");
         }
         else
         {
@@ -510,7 +518,8 @@ RunReport Engine::run(const RunRequest& request, UnifiedReport& unifiedOut) cons
     // With a baseline, only new findings decide the verdict - but a broken
     // checker still fails the run. Recording a baseline is not a verdict.
     // Verdict from what is actually reported: suppressed findings and findings
-    // removed by filters must not fail the run. Hard checker failures always do.
+    // removed by filters must not fail the run. Hard checker failures always
+    // do.
     int exitCode = 0;
     if (hasHardFailure(report))
     {

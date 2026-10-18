@@ -60,16 +60,15 @@ TEST(result_cache_roundtrips_checker_results)
     original.diagnostics.push_back(note);
 
     cache.store("key1", original);
-    const auto loaded = cache.load("key1");
-    REQUIRE(loaded.has_value());
-    REQUIRE(loaded->checker_id == "clang-tidy");
-    REQUIRE(loaded->status == CheckerStatus::Succeeded);
-    REQUIRE(loaded->exit_code.value_or(0) == 1);
-    REQUIRE(loaded->duration.count() == 1234);
-    REQUIRE(loaded->diagnostics.size() == 2);
-    REQUIRE(loaded->diagnostics[0].line.value_or(0) == 12);
-    REQUIRE(loaded->diagnostics[0].severity == Severity::Warning);
-    REQUIRE(loaded->diagnostics[1].role == DiagnosticRole::Note);
+    const auto loaded = REQUIRE_VALUE(cache.load("key1"));
+    REQUIRE(loaded.checker_id == "clang-tidy");
+    REQUIRE(loaded.status == CheckerStatus::Succeeded);
+    REQUIRE(loaded.exit_code.value_or(0) == 1);
+    REQUIRE(loaded.duration.count() == 1234);
+    REQUIRE(loaded.diagnostics.size() == 2);
+    REQUIRE(loaded.diagnostics[0].line.value_or(0) == 12);
+    REQUIRE(loaded.diagnostics[0].severity == Severity::Warning);
+    REQUIRE(loaded.diagnostics[1].role == DiagnosticRole::Note);
 
     REQUIRE(!cache.load("missing").has_value());
 }

@@ -1,4 +1,5 @@
-// SARIF 2.1.0 output derived from the unified findings (one run per CppSentinel run).
+// SARIF 2.1.0 output derived from the unified findings (one run per CppSentinel
+// run).
 
 #include "cppsentinel/report/SarifReporter.h"
 
@@ -29,7 +30,7 @@ struct ObjectBuilder
 {
     std::string body;
 
-    void add(std::string_view key, std::string rawValue)
+    void add(std::string_view key, std::string_view rawValue)
     {
         if (!body.empty())
         {
@@ -37,7 +38,7 @@ struct ObjectBuilder
         }
         body += jsonString(key);
         body.push_back(':');
-        body += std::move(rawValue);
+        body += rawValue;
     }
 
     std::string build() const
@@ -79,7 +80,8 @@ std::string sarifLevel(Severity severity)
     return "none";
 }
 
-/// file:// URI for an absolute path, with a trailing slash (usable as a base id).
+/// file:// URI for an absolute path, with a trailing slash (usable as a base
+/// id).
 std::string directoryUri(const std::filesystem::path& directory)
 {
     if (directory.empty())
@@ -146,7 +148,8 @@ std::string serializeSarif(const UnifiedReport& report)
         rules.push_back(entry.build());
     }
 
-    auto ruleIndexOf = [&ruleIds](const std::string& rule) -> int {
+    auto ruleIndexOf = [&ruleIds](const std::string& rule) -> int
+    {
         for (std::size_t i = 0; i < ruleIds.size(); ++i)
         {
             if (ruleIds[i] == rule)
@@ -182,14 +185,14 @@ std::string serializeSarif(const UnifiedReport& report)
         ObjectBuilder artifactLocation;
         if (finding.file.is_relative())
         {
-            artifactLocation.add(
-                "uri", jsonString(json::uriEncodePath(finding.file.generic_string())));
+            artifactLocation.add("uri", jsonString(json::uriEncodePath(
+                                            finding.file.generic_string())));
             artifactLocation.add("uriBaseId", jsonString("%SRCROOT%"));
         }
         else
         {
-            artifactLocation.add(
-                "uri", jsonString(json::uriEncodePath(finding.file.generic_string())));
+            artifactLocation.add("uri", jsonString(json::uriEncodePath(
+                                            finding.file.generic_string())));
         }
 
         ObjectBuilder physicalLocation;
@@ -246,7 +249,8 @@ std::string serializeSarif(const UnifiedReport& report)
 
                 // Group replacements by file: SARIF changes are per artifact.
                 std::vector<std::string> order;
-                std::map<std::string, std::vector<const FixReplacement*>> byFile;
+                std::map<std::string, std::vector<const FixReplacement*>>
+                    byFile;
                 for (const auto& replacement : fix.replacements)
                 {
                     const std::string key = replacement.file.generic_string();
@@ -274,12 +278,12 @@ std::string serializeSarif(const UnifiedReport& report)
                     {
                         ObjectBuilder entry;
                         ObjectBuilder deletedRegion;
-                        deletedRegion.add(
-                            "charOffset",
-                            number(static_cast<long long>(replacement->offset)));
-                        deletedRegion.add(
-                            "charLength",
-                            number(static_cast<long long>(replacement->length)));
+                        deletedRegion.add("charOffset",
+                                          number(static_cast<long long>(
+                                              replacement->offset)));
+                        deletedRegion.add("charLength",
+                                          number(static_cast<long long>(
+                                              replacement->length)));
                         entry.add("deletedRegion", deletedRegion.build());
                         ObjectBuilder inserted;
                         inserted.add("text", jsonString(replacement->text));
@@ -326,7 +330,8 @@ std::string serializeSarif(const UnifiedReport& report)
     // ---- driver / run ----
     ObjectBuilder driver;
     driver.add("name", jsonString("CppSentinel"));
-    driver.add("informationUri", jsonString("https://github.com/qwp-look/CppSentinel"));
+    driver.add("informationUri",
+               jsonString("https://github.com/qwp-look/CppSentinel"));
     driver.add("rules", arrayOf(rules));
 
     ObjectBuilder tool;
@@ -339,14 +344,16 @@ std::string serializeSarif(const UnifiedReport& report)
     if (!report.metadata.project_root.empty())
     {
         ObjectBuilder baseId;
-        baseId.add("uri", jsonString(directoryUri(report.metadata.project_root)));
+        baseId.add("uri",
+                   jsonString(directoryUri(report.metadata.project_root)));
         ObjectBuilder baseIds;
         baseIds.add("%SRCROOT%", baseId.build());
         run.add("originalUriBaseIds", baseIds.build());
     }
 
     ObjectBuilder root;
-    root.add("$schema", jsonString("https://json.schemastore.org/sarif-2.1.0.json"));
+    root.add("$schema",
+             jsonString("https://json.schemastore.org/sarif-2.1.0.json"));
     root.add("version", jsonString("2.1.0"));
     root.add("runs", arrayOf({run.build()}));
     return root.build();

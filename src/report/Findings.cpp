@@ -86,9 +86,14 @@ std::uint64_t fnv1a64(std::string_view s) noexcept
 std::string hexId(std::uint64_t value)
 {
     char buf[17];
-    std::snprintf(buf, sizeof(buf), "%016llx",
-                  static_cast<unsigned long long>(value));
-    return std::string("CS-") + buf;
+    const int written = std::snprintf(buf, sizeof(buf), "%016llx",
+                                      static_cast<unsigned long long>(value));
+    if (written <= 0)
+    {
+        return "CS-0000000000000000";
+    }
+    return std::string("CS-") +
+           std::string(buf, static_cast<std::size_t>(written));
 }
 
 std::string dedupKey(const Finding& finding)
@@ -175,7 +180,8 @@ std::string categoryForRule(std::string_view rule)
     const std::string key = lowerAsciiCopy(rule);
 
     if (key == "compiler" || key == "gcc" || key == "clang" ||
-        startsWith(key, "clang-diagnostic-") || startsWith(key, "gcc-diagnostic-"))
+        startsWith(key, "clang-diagnostic-") ||
+        startsWith(key, "gcc-diagnostic-"))
     {
         return "build";
     }
@@ -216,8 +222,9 @@ std::string categoryForRule(std::string_view rule)
     return "other";
 }
 
-std::filesystem::path normalizeFindingPath(const std::filesystem::path& file,
-                                           const std::filesystem::path& project_root)
+std::filesystem::path
+normalizeFindingPath(const std::filesystem::path& file,
+                     const std::filesystem::path& project_root)
 {
     if (file.empty())
     {
@@ -243,8 +250,8 @@ std::filesystem::path normalizeFindingPath(const std::filesystem::path& file,
             fileKey[rootKey.size()] == '/')
         {
             const std::string generic = file.generic_string();
-            return std::filesystem::path(normalizeSeparators(
-                generic.substr(rootKey.size() + 1)));
+            return std::filesystem::path(
+                normalizeSeparators(generic.substr(rootKey.size() + 1)));
         }
     }
 
@@ -300,8 +307,8 @@ UnifiedReport buildUnifiedReport(const RunReport& raw,
         {
             ++rawDiagnostics;
 
-            // "note:" lines annotate the preceding diagnostic; attach instead of
-            // counting them as separate findings.
+            // "note:" lines annotate the preceding diagnostic; attach instead
+            // of counting them as separate findings.
             if (diag.role == DiagnosticRole::Note)
             {
                 std::string note = collapseWhitespace(diag.message);
@@ -350,14 +357,17 @@ UnifiedReport buildUnifiedReport(const RunReport& raw,
             }
 
             Finding finding;
-            finding.file = normalizeFindingPath(diag.file, options.project_root);
-            finding.line = (diag.line && *diag.line > 0) ? diag.line : std::nullopt;
+            finding.file =
+                normalizeFindingPath(diag.file, options.project_root);
+            finding.line =
+                (diag.line && *diag.line > 0) ? diag.line : std::nullopt;
             finding.column =
                 (diag.column && *diag.column > 0) ? diag.column : std::nullopt;
             finding.severity = diag.severity;
             finding.rule = diag.rule.empty() ? checker.checker_kind : diag.rule;
             finding.category = categoryForRule(finding.rule);
-            if (finding.category == "other" && finding.severity == Severity::Style)
+            if (finding.category == "other" &&
+                finding.severity == Severity::Style)
             {
                 // Tool ids we do not know, but the tool itself called it style.
                 finding.category = "style";
@@ -365,19 +375,18 @@ UnifiedReport buildUnifiedReport(const RunReport& raw,
             finding.message = collapseWhitespace(diag.message);
             if (finding.message.empty())
             {
-                finding.message = finding.rule.empty() ? "(no message)"
-                                                       : finding.rule;
+                finding.message =
+                    finding.rule.empty() ? "(no message)" : finding.rule;
             }
             finding.tools.push_back(checker.checker_kind);
 
-            if (!finding.file.empty() &&
-                finding.file.is_absolute())
+            if (!finding.file.empty() && finding.file.is_absolute())
             {
                 if (outsideRoot.size() < 5)
                 {
                     const std::string path = finding.file.generic_string();
-                    if (std::find(outsideRoot.begin(), outsideRoot.end(), path) ==
-                        outsideRoot.end())
+                    if (std::find(outsideRoot.begin(), outsideRoot.end(),
+                                  path) == outsideRoot.end())
                     {
                         outsideRoot.push_back(path);
                     }
@@ -404,14 +413,15 @@ UnifiedReport buildUnifiedReport(const RunReport& raw,
             lastPrimary = it->second;
             Finding& existing = findings[it->second];
             ++existing.occurrences;
-            if (severityRank(finding.severity) < severityRank(existing.severity))
+            if (severityRank(finding.severity) <
+                severityRank(existing.severity))
             {
                 existing.severity = finding.severity;
             }
             for (const auto& tool : finding.tools)
             {
-                if (std::find(existing.tools.begin(), existing.tools.end(), tool) ==
-                    existing.tools.end())
+                if (std::find(existing.tools.begin(), existing.tools.end(),
+                              tool) == existing.tools.end())
                 {
                     existing.tools.push_back(tool);
                 }
@@ -420,7 +430,8 @@ UnifiedReport buildUnifiedReport(const RunReport& raw,
     }
 
     std::sort(findings.begin(), findings.end(),
-              [](const Finding& a, const Finding& b) {
+              [](const Finding& a, const Finding& b)
+              {
                   const std::string ak = pathKey(a.file.generic_string());
                   const std::string bk = pathKey(b.file.generic_string());
                   if (ak != bk)
@@ -437,7 +448,8 @@ UnifiedReport buildUnifiedReport(const RunReport& raw,
                   }
                   if (severityRank(a.severity) != severityRank(b.severity))
                   {
-                      return severityRank(a.severity) < severityRank(b.severity);
+                      return severityRank(a.severity) <
+                             severityRank(b.severity);
                   }
                   if (a.rule != b.rule)
                   {
@@ -539,7 +551,8 @@ void recomputeSummary(UnifiedReport& report)
     }
 
     std::sort(summary.files.begin(), summary.files.end(),
-              [](const FileFindingSummary& a, const FileFindingSummary& b) {
+              [](const FileFindingSummary& a, const FileFindingSummary& b)
+              {
                   if (a.counts.total() != b.counts.total())
                   {
                       return a.counts.total() > b.counts.total();
@@ -552,21 +565,24 @@ void recomputeSummary(UnifiedReport& report)
                          pathKey(b.file.generic_string());
               });
     std::sort(summary.rules.begin(), summary.rules.end(),
-              [](const RuleFindingSummary& a, const RuleFindingSummary& b) {
+              [](const RuleFindingSummary& a, const RuleFindingSummary& b)
+              {
                   if (a.count != b.count)
                   {
                       return a.count > b.count;
                   }
                   return a.rule < b.rule;
               });
-    std::sort(summary.categories.begin(), summary.categories.end(),
-              [](const CategoryFindingSummary& a, const CategoryFindingSummary& b) {
-                  if (a.count != b.count)
-                  {
-                      return a.count > b.count;
-                  }
-                  return a.category < b.category;
-              });
+    std::sort(
+        summary.categories.begin(), summary.categories.end(),
+        [](const CategoryFindingSummary& a, const CategoryFindingSummary& b)
+        {
+            if (a.count != b.count)
+            {
+                return a.count > b.count;
+            }
+            return a.category < b.category;
+        });
     summary.affected_files = summary.files.size();
 }
 

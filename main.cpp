@@ -1,16 +1,16 @@
 // CppSentinel CLI entry point (v2).
 //
 // Responsibilities: parse `run --config --target`, load/validate config,
-// construct Engine with built-in checkers, print console summary, return exit code.
-// No tool execution or report-directory logic lives here.
+// construct Engine with built-in checkers, print console summary, return exit
+// code. No tool execution or report-directory logic lives here.
 //
 // Usage: CppSentinel run --config <file> --target <file-or-dir>
 
 #include "cppsentinel/config/ConfigLoader.h"
 #include "cppsentinel/core/CheckerRegistry.h"
 #include "cppsentinel/core/Doctor.h"
-#include "cppsentinel/core/ToolProbe.h"
 #include "cppsentinel/core/Engine.h"
+#include "cppsentinel/core/ToolProbe.h"
 #include "cppsentinel/process/Msys2ProcessRunner.h"
 #include "cppsentinel/process/NativeProcessRunner.h"
 #include "cppsentinel/report/ConsoleReporter.h"
@@ -40,7 +40,8 @@ void printUsage(const char* argv0)
         << "Options:\n"
         << "  --config           Path to v2 Configuration.toml\n"
         << "  --target           Source file or directory to check\n"
-        << "  --baseline <file>  Compare against a baseline and report new findings\n"
+        << "  --baseline <file>  Compare against a baseline and report new "
+           "findings\n"
         << "  --update-baseline  Rewrite the baseline from this run\n"
         << "  --jobs <n>         Run up to n checkers in parallel (1..16)\n"
         << "  --cache            Reuse results for an unchanged project tree\n"
@@ -94,7 +95,8 @@ std::optional<CliArgs> parseArgs(int argc, char* argv[], std::string& error)
     for (int i = 2; i < argc; ++i)
     {
         const std::string_view opt = argv[i];
-        auto needValue = [&](const char* name) -> std::optional<std::string> {
+        auto needValue = [&](const char* name) -> std::optional<std::string>
+        {
             if (i + 1 >= argc)
             {
                 error = std::string(name) + " requires a value";
@@ -240,8 +242,10 @@ int runDoctorCommand(const CliArgs& args)
     // each configured executable for its version.
     const auto projectRoot = loaded.config.project.root;
     cppsentinel::ToolProbe probe =
-        [projectRoot](const std::string&, const cppsentinel::EnvironmentProfile& env,
-                      const std::string& executable) -> std::string {
+        [projectRoot](const std::string&,
+                      const cppsentinel::EnvironmentProfile& env,
+                      const std::string& executable) -> std::string
+    {
         cppsentinel::ProcessRunnerPtr runner;
         if (env.kind == cppsentinel::EnvironmentKind::Msys2)
         {
@@ -268,15 +272,17 @@ int runDoctorCommand(const CliArgs& args)
 int runInitCommand(const CliArgs& args)
 {
     namespace fs = std::filesystem;
-    const fs::path dir = args.initDir.empty() ? fs::current_path() : args.initDir;
+    const fs::path dir =
+        args.initDir.empty() ? fs::current_path() : args.initDir;
     const fs::path configPath = dir / "Configuration" / "Configuration.toml";
 
     std::error_code ec;
     fs::create_directories(configPath.parent_path(), ec);
     if (ec)
     {
-        std::cerr << "Error: cannot create " << configPath.parent_path().string()
-                  << ": " << ec.message() << '\n';
+        std::cerr << "Error: cannot create "
+                  << configPath.parent_path().string() << ": " << ec.message()
+                  << '\n';
         return 1;
     }
     if (fs::exists(configPath, ec))
@@ -286,7 +292,8 @@ int runInitCommand(const CliArgs& args)
         return 1;
     }
 
-    static constexpr const char* kTemplate = R"(# CppSentinel configuration (schema 2)
+    static constexpr const char* kTemplate =
+        R"(# CppSentinel configuration (schema 2)
 schema_version = 2
 
 [project]
@@ -406,7 +413,8 @@ int runMain(int argc, char* argv[])
     // CLI overrides applied on top of the configuration file.
     if (!args->baseline.empty())
     {
-        request.config.baseline.path = std::filesystem::absolute(args->baseline, ec);
+        request.config.baseline.path =
+            std::filesystem::absolute(args->baseline, ec);
     }
     if (args->updateBaseline)
     {
@@ -437,8 +445,8 @@ int runMain(int argc, char* argv[])
         std::cout << "\nreport.md       : " << (dir / "report.md").string()
                   << "\nreport.json     : " << (dir / "report.json").string()
                   << "\nreport.sarif    : " << (dir / "report.sarif").string()
-                  << "\nreport.raw.json : " << (dir / "report.raw.json").string()
-                  << '\n';
+                  << "\nreport.raw.json : "
+                  << (dir / "report.raw.json").string() << '\n';
     }
 
     return report.exit_code;

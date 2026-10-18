@@ -27,12 +27,12 @@ namespace
 constexpr std::size_t kFilesPerInvocation = 40;
 
 std::string optionOr(const CheckerConfig& cfg, const std::string& key,
-                     std::string fallback)
+                     std::string_view fallback)
 {
     const auto it = cfg.options.find(key);
     if (it == cfg.options.end() || it->second.empty())
     {
-        return fallback;
+        return std::string(fallback);
     }
     return it->second;
 }
@@ -134,8 +134,8 @@ chunkFiles(const std::vector<std::filesystem::path>& files, std::size_t size)
     std::vector<std::vector<std::filesystem::path>> batches;
     for (std::size_t start = 0; start < files.size(); start += size)
     {
-        const std::size_t end = start + size < files.size() ? start + size
-                                                            : files.size();
+        const std::size_t end =
+            start + size < files.size() ? start + size : files.size();
         batches.emplace_back(files.begin() + static_cast<std::ptrdiff_t>(start),
                              files.begin() + static_cast<std::ptrdiff_t>(end));
     }
@@ -164,8 +164,9 @@ CheckerResult fromProcess(const CheckerContext& context,
     result.artifacts = std::move(artifacts);
     result.message = proc.error_message;
 
-    // Soft tool exits (non-zero with diagnostics) stay Succeeded so [run].fail_on
-    // decides policy from Diagnostic severities. Hard failures remain sticky.
+    // Soft tool exits (non-zero with diagnostics) stay Succeeded so
+    // [run].fail_on decides policy from Diagnostic severities. Hard failures
+    // remain sticky.
     switch (proc.state)
     {
     case ProcessState::Succeeded:
@@ -177,7 +178,8 @@ CheckerResult fromProcess(const CheckerContext& context,
             result.status = CheckerStatus::ToolError;
             if (result.message.empty())
             {
-                result.message = "tool exited non-zero without parseable diagnostics";
+                result.message =
+                    "tool exited non-zero without parseable diagnostics";
             }
         }
         else
@@ -232,8 +234,10 @@ std::vector<Diagnostic> parseLogs(const ProcessResult& proc)
 
 class ClangTidyChecker final : public Checker
 {
-public:
-    explicit ClangTidyChecker(CheckerConfig config) : config_(std::move(config)) {}
+  public:
+    explicit ClangTidyChecker(CheckerConfig config) : config_(std::move(config))
+    {
+    }
 
     std::string_view kind() const noexcept override
     {
@@ -315,24 +319,26 @@ public:
 
         if (total.status == CheckerStatus::Succeeded)
         {
-            total.message = total.diagnostics.empty()
-                                ? "clang-tidy clean (" +
-                                      batchSummary(files.size(), batches.size()) + ")"
-                                : "clang-tidy reported " +
-                                      std::to_string(total.diagnostics.size()) +
-                                      " diagnostics";
+            total.message =
+                total.diagnostics.empty()
+                    ? "clang-tidy clean (" +
+                          batchSummary(files.size(), batches.size()) + ")"
+                    : "clang-tidy reported " +
+                          std::to_string(total.diagnostics.size()) +
+                          " diagnostics";
         }
         return total;
     }
 
-private:
+  private:
     CheckerConfig config_;
 };
 
 class ClangFormatChecker final : public Checker
 {
-public:
-    explicit ClangFormatChecker(CheckerConfig config) : config_(std::move(config))
+  public:
+    explicit ClangFormatChecker(CheckerConfig config)
+        : config_(std::move(config))
     {
     }
 
@@ -350,18 +356,17 @@ public:
         auto total = emptyResult(context);
         std::size_t index = 0;
 
-        // One file per invocation: a non-zero exit must be attributable to a file.
+        // One file per invocation: a non-zero exit must be attributable to a
+        // file.
         for (const auto& file : files)
         {
-            const auto replacements = context.artifacts_dir /
-                                      ("replacements-" + std::to_string(index) +
-                                       ".xml");
+            const auto replacements =
+                context.artifacts_dir /
+                ("replacements-" + std::to_string(index) + ".xml");
 
             std::vector<std::string> args = {
-                "--dry-run",
-                "--Werror",
-                "--style=" + style,
-                "--output-replacements-xml",
+                "--dry-run",        "--Werror",
+                "--style=" + style, "--output-replacements-xml",
                 file.string(),
             };
             for (const auto& extra : config_.extra_args)
@@ -424,13 +429,13 @@ public:
         return total;
     }
 
-private:
+  private:
     CheckerConfig config_;
 };
 
 class CompilerDiagnosticsChecker final : public Checker
 {
-public:
+  public:
     explicit CompilerDiagnosticsChecker(CheckerConfig config)
         : config_(std::move(config))
     {
@@ -542,14 +547,16 @@ public:
         return total;
     }
 
-private:
+  private:
     CheckerConfig config_;
 };
 
 class CppcheckChecker final : public Checker
 {
-public:
-    explicit CppcheckChecker(CheckerConfig config) : config_(std::move(config)) {}
+  public:
+    explicit CppcheckChecker(CheckerConfig config) : config_(std::move(config))
+    {
+    }
 
     std::string_view kind() const noexcept override
     {
@@ -559,9 +566,9 @@ public:
     CheckerResult run(const CheckerContext& context) const override
     {
         const std::string exe = optionOr(config_, "executable", "cppcheck");
-        const auto enable = optionOr(
-            config_, "enable",
-            "warning,style,performance,portability,information");
+        const auto enable =
+            optionOr(config_, "enable",
+                     "warning,style,performance,portability,information");
         const auto stdv = optionOr(config_, "std", "c++20");
 
         const auto files = targetFiles(context);
@@ -569,6 +576,11 @@ public:
 
         auto total = emptyResult(context);
         std::size_t index = 0;
+
+        // Kept as one literal: splitting it makes clang-tidy think a comma is
+        // missing between array elements.
+        const std::string templateArg =
+            "--template={file}:{line}:{column}: {severity}: {message} [{id}]";
 
         for (const auto& batch : batches)
         {
@@ -579,7 +591,7 @@ public:
                 "--force",
                 "--inline-suppr",
                 "--suppress=missingIncludeSystem",
-                "--template={file}:{line}:{column}: {severity}: {message} [{id}]",
+                templateArg,
                 "-I",
                 (context.project_root / "include").string(),
                 "-I",
@@ -624,15 +636,16 @@ public:
 
         if (total.status == CheckerStatus::Succeeded)
         {
-            total.message = total.diagnostics.empty()
-                                ? "cppcheck clean (" +
-                                      batchSummary(files.size(), batches.size()) + ")"
-                                : "cppcheck reported issues";
+            total.message =
+                total.diagnostics.empty()
+                    ? "cppcheck clean (" +
+                          batchSummary(files.size(), batches.size()) + ")"
+                    : "cppcheck reported issues";
         }
         return total;
     }
 
-private:
+  private:
     CheckerConfig config_;
 };
 

@@ -12,10 +12,11 @@
 namespace cppsentinel
 {
 
-/// Maps checker kind strings to factory functions returning unique_ptr<Checker>.
+/// Maps checker kind strings to factory functions returning
+/// unique_ptr<Checker>.
 class CheckerRegistry
 {
-public:
+  public:
     void registerFactory(std::string kind, CheckerFactory factory);
 
     /// Returns nullptr if kind is unknown.
@@ -23,7 +24,7 @@ public:
 
     bool contains(std::string_view kind) const;
 
-private:
+  private:
     std::unordered_map<std::string, CheckerFactory> factories_;
 };
 

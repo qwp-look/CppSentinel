@@ -37,9 +37,13 @@ std::uint64_t fnv1a64(std::string_view text) noexcept
 std::string hex(std::uint64_t value)
 {
     char buffer[17];
-    std::snprintf(buffer, sizeof(buffer), "%016llx",
-                  static_cast<unsigned long long>(value));
-    return std::string(buffer);
+    const int written = std::snprintf(buffer, sizeof(buffer), "%016llx",
+                                      static_cast<unsigned long long>(value));
+    if (written <= 0)
+    {
+        return {};
+    }
+    return std::string(buffer, static_cast<std::size_t>(written));
 }
 
 bool skipDirectoryName(const std::string& name)
@@ -163,7 +167,8 @@ std::string projectFingerprint(const fs::path& root)
             const auto writeTime = it->last_write_time(ec);
             const long long stampValue =
                 ec ? 0
-                   : static_cast<long long>(writeTime.time_since_epoch().count());
+                   : static_cast<long long>(
+                         writeTime.time_since_epoch().count());
 
             std::string entry = path.generic_string();
             entry.push_back('|');
@@ -303,7 +308,8 @@ std::optional<CheckerResult> ResultCache::load(const std::string& key) const
     return result;
 }
 
-void ResultCache::store(const std::string& key, const CheckerResult& result) const
+void ResultCache::store(const std::string& key,
+                        const CheckerResult& result) const
 {
     if (!enabled_ || key.empty())
     {
@@ -327,15 +333,15 @@ void ResultCache::store(const std::string& key, const CheckerResult& result) con
     document["diagnostics"] = Json::array();
     for (const auto& diagnostic : result.diagnostics)
     {
-        document["diagnostics"].push_back(
-            Json{{"file", diagnostic.file.generic_string()},
-                 {"line", diagnostic.line ? *diagnostic.line : 0u},
-                 {"column", diagnostic.column ? *diagnostic.column : 0u},
-                 {"severity", toString(diagnostic.severity)},
-                 {"rule", diagnostic.rule},
-                 {"message", diagnostic.message},
-                 {"role", diagnostic.role == DiagnosticRole::Note ? "note"
-                                                                  : "primary"}});
+        document["diagnostics"].push_back(Json{
+            {"file", diagnostic.file.generic_string()},
+            {"line", diagnostic.line ? *diagnostic.line : 0u},
+            {"column", diagnostic.column ? *diagnostic.column : 0u},
+            {"severity", toString(diagnostic.severity)},
+            {"rule", diagnostic.rule},
+            {"message", diagnostic.message},
+            {"role",
+             diagnostic.role == DiagnosticRole::Note ? "note" : "primary"}});
     }
 
     std::string writeError;

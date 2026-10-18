@@ -84,7 +84,7 @@ TEST(target_directory_applies_exclude_globs)
 
 TEST(target_missing_path_yields_nothing)
 {
-    const auto targets = enumerateTargets(targetRoot() / "does-not-exist",
-                                          targetRoot());
+    const auto targets =
+        enumerateTargets(targetRoot() / "does-not-exist", targetRoot());
     REQUIRE(targets.files.empty());
 }

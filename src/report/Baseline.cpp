@@ -78,15 +78,15 @@ bool loadBaseline(const std::filesystem::path& path, BaselineData& baseline,
     auto text = readTextFile(path, readError);
     if (!text)
     {
-        errorMessage = "cannot read baseline '" + path.string() + "': " + readError;
+        errorMessage =
+            "cannot read baseline '" + path.string() + "': " + readError;
         return false;
     }
 
     const auto document = Json::parse(*text, nullptr, false);
     if (document.is_discarded() || !document.is_object())
     {
-        errorMessage =
-            "baseline '" + path.string() + "' is not a JSON object";
+        errorMessage = "baseline '" + path.string() + "' is not a JSON object";
         return false;
     }
 
@@ -118,16 +118,16 @@ bool loadBaseline(const std::filesystem::path& path, BaselineData& baseline,
     }
     catch (const std::exception& ex)
     {
-        errorMessage = "baseline '" + path.string() + "' has an invalid field: " +
-                       ex.what();
+        errorMessage = "baseline '" + path.string() +
+                       "' has an invalid field: " + ex.what();
         return false;
     }
 
     return true;
 }
 
-bool saveBaseline(const std::filesystem::path& path, const BaselineData& baseline,
-                  std::string& errorMessage)
+bool saveBaseline(const std::filesystem::path& path,
+                  const BaselineData& baseline, std::string& errorMessage)
 {
     std::error_code ec;
     if (!path.parent_path().empty())
@@ -170,9 +170,9 @@ void applyBaseline(UnifiedReport& report, const BaselineData& baseline,
             known = true;
             matched[it->second] = true;
         }
-        else if (const auto it = byContent.find(contentKey(
-                     finding.rule, finding.file.generic_string(),
-                     finding.message));
+        else if (const auto it = byContent.find(
+                     contentKey(finding.rule, finding.file.generic_string(),
+                                finding.message));
                  it != byContent.end())
         {
             // Same file/rule/message on a different line: treated as known.

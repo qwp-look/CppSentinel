@@ -12,10 +12,11 @@
 namespace cppsentinel
 {
 
-/// One audit tool integration. run() is const; do not store per-run mutable state.
+/// One audit tool integration. run() is const; do not store per-run mutable
+/// state.
 class Checker
 {
-public:
+  public:
     virtual ~Checker() = default;
 
     /// Registry key, e.g. "clang-tidy" (matches [[checker]].kind).

@@ -17,9 +17,13 @@ namespace fs = std::filesystem;
 std::string lowerExtension(const fs::path& path)
 {
     std::string ext = path.extension().string();
-    std::transform(ext.begin(), ext.end(), ext.begin(), [](char c) {
-        return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
-    });
+    std::transform(ext.begin(), ext.end(), ext.begin(),
+                   [](char c)
+                   {
+                       return (c >= 'A' && c <= 'Z')
+                                  ? static_cast<char>(c - 'A' + 'a')
+                                  : c;
+                   });
     return ext;
 }
 
@@ -36,7 +40,7 @@ std::string relativeForMatch(const fs::path& path, const fs::path& projectRoot)
     {
         return path.generic_string();
     }
-    const std::string generic = relative.generic_string();
+    std::string generic = relative.generic_string();
     if (generic.rfind("..", 0) == 0)
     {
         return path.generic_string();
@@ -49,8 +53,8 @@ std::string relativeForMatch(const fs::path& path, const fs::path& projectRoot)
 bool isCppSourceFile(const fs::path& path)
 {
     static const char* kExtensions[] = {
-        ".c",   ".cc",  ".cpp", ".cxx", ".c++", ".cp",  ".h",  ".hh",
-        ".hpp", ".hxx", ".h++", ".ipp", ".inl", ".tcc", ".m",  ".mm",
+        ".c",   ".cc",  ".cpp", ".cxx", ".c++", ".cp",  ".h", ".hh",
+        ".hpp", ".hxx", ".h++", ".ipp", ".inl", ".tcc", ".m", ".mm",
     };
     const std::string ext = lowerExtension(path);
     if (ext.empty())
@@ -67,8 +71,7 @@ bool isCppSourceFile(const fs::path& path)
     return false;
 }
 
-TargetSet enumerateTargets(const fs::path& target,
-                           const fs::path& projectRoot,
+TargetSet enumerateTargets(const fs::path& target, const fs::path& projectRoot,
                            const std::vector<std::string>& excludeGlobs)
 {
     TargetSet result;
@@ -85,7 +88,8 @@ TargetSet enumerateTargets(const fs::path& target,
         return result;
     }
 
-    auto excluded = [&](const fs::path& path) {
+    auto excluded = [&](const fs::path& path)
+    {
         if (excludeGlobs.empty())
         {
             return false;
@@ -118,9 +122,9 @@ TargetSet enumerateTargets(const fs::path& target,
         if (it->is_directory(ec))
         {
             const std::string name = path.filename().string();
-            if (!name.empty() && (name.front() == '.' || name == "build" ||
-                                  name.rfind("build-", 0) == 0 ||
-                                  name == "node_modules"))
+            if (!name.empty() &&
+                (name.front() == '.' || name == "build" ||
+                 name.rfind("build-", 0) == 0 || name == "node_modules"))
             {
                 it.disable_recursion_pending();
             }
@@ -162,9 +166,8 @@ TargetSet enumerateTargets(const fs::path& target,
     }
 
     std::sort(result.files.begin(), result.files.end(),
-              [](const fs::path& a, const fs::path& b) {
-                  return a.generic_string() < b.generic_string();
-              });
+              [](const fs::path& a, const fs::path& b)
+              { return a.generic_string() < b.generic_string(); });
     result.files.erase(std::unique(result.files.begin(), result.files.end()),
                        result.files.end());
     return result;

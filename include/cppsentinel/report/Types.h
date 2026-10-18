@@ -1,7 +1,7 @@
 #pragma once
 
-// Shared report model: severities, checker/process status, diagnostics, RunReport.
-// report.json is serialized from these types (see JsonReporter).
+// Shared report model: severities, checker/process status, diagnostics,
+// RunReport. report.json is serialized from these types (see JsonReporter).
 
 #include <chrono>
 #include <cstdint>
@@ -26,13 +26,15 @@ enum class Severity : std::uint8_t
 /// Outcome of one checker invocation (independent of process exit code).
 enum class CheckerStatus : std::uint8_t
 {
-    Succeeded,   ///< Tool finished; diagnostics may still fail the run via fail_on
-    Failed,      ///< Soft failure reserved for incomplete/unknown soft cases
-    Skipped,     ///< enabled = false
-    TimedOut,    ///< Hard failure
-    StartError,  ///< Hard failure: process could not start
-    ToolError,   ///< Hard failure: non-zero exit with no parseable diagnostics
-    ConfigError  ///< Hard failure: missing CDB, unknown kind, bad environment, ...
+    Succeeded,  ///< Tool finished; diagnostics may still fail the run via
+                ///< fail_on
+    Failed,     ///< Soft failure reserved for incomplete/unknown soft cases
+    Skipped,    ///< enabled = false
+    TimedOut,   ///< Hard failure
+    StartError, ///< Hard failure: process could not start
+    ToolError,  ///< Hard failure: non-zero exit with no parseable diagnostics
+    ConfigError ///< Hard failure: missing CDB, unknown kind, bad environment,
+                ///< ...
 };
 
 /// Low-level process runner outcome.
@@ -45,8 +47,8 @@ enum class ProcessState : std::uint8_t
 };
 
 /// Role of a diagnostic line inside a tool report.
-/// clang/gcc emit "note:" lines that annotate the preceding diagnostic; they are
-/// context, not independent findings.
+/// clang/gcc emit "note:" lines that annotate the preceding diagnostic; they
+/// are context, not independent findings.
 enum class DiagnosticRole : std::uint8_t
 {
     Primary,
@@ -149,7 +151,8 @@ inline const char* toString(FailOn f) noexcept
     return "warning";
 }
 
-/// One structured finding parsed from tool output (or synthesized by a checker).
+/// One structured finding parsed from tool output (or synthesized by a
+/// checker).
 struct Diagnostic
 {
     std::filesystem::path file;

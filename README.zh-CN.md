@@ -122,6 +122,10 @@ checker 选项、工具版本，以及项目根下所有 C/C++ 文件的指纹�
 最后上传 `report.md` / `report.sarif` / `report.json`。若要按"回归"而非"绝对状态"
 卡门，提交基线并启用 `fail_on_new`。
 
+这个 job 就是用它审自己。当前状态：**0 error，7 warning**，全部是
+`bugprone-easily-swappable-parameters`（对 `globMatch(pattern, text)` 这类函数签名的
+风格意见），保留可见而不做过滤。
+
 ## 过滤与基线
 
 不是每条问题都值得处理。过滤器会显式丢弃并记录原因，而不是悄悄隐藏：

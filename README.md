@@ -126,6 +126,10 @@ warnings cannot fail the build), then uploads `report.md` / `report.sarif` /
 `report.json`. To gate on regressions instead of absolute state, commit a
 baseline and enable `fail_on_new`.
 
+The tool audits itself with this job. Current state: **0 errors, 7 warnings**,
+all `bugprone-easily-swappable-parameters` - an API-shape opinion on functions
+such as `globMatch(pattern, text)`, kept visible rather than filtered.
+
 ## Filtering and baselines
 
 Not every finding is worth acting on. Filters drop findings explicitly and

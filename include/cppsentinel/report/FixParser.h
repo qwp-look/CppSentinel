@@ -2,9 +2,9 @@
 
 // Parsing of clang-tidy `--export-fixes` YAML into structured replacements.
 //
-// Only the subset clang-tidy actually emits is understood: a list of diagnostics
-// with a single-level `Replacements` list, plain or single/double quoted
-// scalars. Block scalars and unknown constructs are skipped rather than
+// Only the subset clang-tidy actually emits is understood: a list of
+// diagnostics with a single-level `Replacements` list, plain or single/double
+// quoted scalars. Block scalars and unknown constructs are skipped rather than
 // guessed, so a partial file degrades to "no fixes" instead of bad edits.
 
 #include "cppsentinel/report/Findings.h"

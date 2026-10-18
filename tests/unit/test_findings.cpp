@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -23,19 +24,19 @@ fs::path testRoot()
 }
 
 Diagnostic makeDiag(const fs::path& file, std::uint32_t line, Severity severity,
-                    std::string rule, std::string message)
+                    std::string_view rule, std::string_view message)
 {
     Diagnostic d;
     d.file = file;
     d.line = line;
     d.column = 3;
     d.severity = severity;
-    d.rule = std::move(rule);
-    d.message = std::move(message);
+    d.rule = rule;
+    d.message = message;
     return d;
 }
 
-CheckerResult makeChecker(std::string id, CheckerStatus status)
+CheckerResult makeChecker(std::string_view id, CheckerStatus status)
 {
     CheckerResult c;
     c.checker_id = id;
@@ -71,7 +72,8 @@ TEST(finding_path_is_made_project_relative)
     REQUIRE(relative.generic_string() == "src/a.cpp");
 
     // A path outside the root stays absolute.
-    const auto outside = fs::path(fs::temp_directory_path() / "other" / "b.hpp");
+    const auto outside =
+        fs::path(fs::temp_directory_path() / "other" / "b.hpp");
     const auto kept = normalizeFindingPath(outside, testRoot());
     REQUIRE(kept.is_absolute());
 }
@@ -90,7 +92,8 @@ TEST(findings_collapse_duplicates_across_tools)
     cppcheck.diagnostics.push_back(
         makeDiag(file, 10, Severity::Error, "bugprone-foo", "same thing"));
 
-    const auto unified = buildUnifiedReport(makeReport({tidy, cppcheck}), options());
+    const auto unified =
+        buildUnifiedReport(makeReport({tidy, cppcheck}), options());
 
     REQUIRE(unified.findings.size() == 1);
     REQUIRE(unified.findings[0].occurrences == 3);
@@ -135,7 +138,8 @@ TEST(summary_rolls_up_severities_files_and_rules)
     auto cppcheck = makeChecker("cppcheck", CheckerStatus::TimedOut);
     cppcheck.message = "timeout after 5000ms";
 
-    const auto unified = buildUnifiedReport(makeReport({tidy, cppcheck}), options());
+    const auto unified =
+        buildUnifiedReport(makeReport({tidy, cppcheck}), options());
 
     REQUIRE(unified.summary.severity.error == 1);
     REQUIRE(unified.summary.severity.warning == 1);

@@ -11,6 +11,7 @@ namespace cppsentinel
 
 /// Fill Finding::snippet with the trimmed text of the finding's line.
 /// Each file is read once; unreadable files leave the snippet empty.
-void attachSnippets(UnifiedReport& report, const std::filesystem::path& projectRoot);
+void attachSnippets(UnifiedReport& report,
+                    const std::filesystem::path& projectRoot);
 
 } // namespace cppsentinel

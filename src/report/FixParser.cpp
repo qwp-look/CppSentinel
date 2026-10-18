@@ -21,11 +21,13 @@ namespace
 
 std::string_view trim(std::string_view text)
 {
-    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.front())))
+    while (!text.empty() &&
+           std::isspace(static_cast<unsigned char>(text.front())))
     {
         text.remove_prefix(1);
     }
-    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.back())))
+    while (!text.empty() &&
+           std::isspace(static_cast<unsigned char>(text.back())))
     {
         text.remove_suffix(1);
     }
@@ -181,7 +183,8 @@ std::vector<ParsedFix> parseClangTidyFixes(const std::string& yamlText)
     bool replacementActive = false;
     FixReplacement replacement;
 
-    auto flushCurrent = [&]() {
+    auto flushCurrent = [&]()
+    {
         flushReplacement(current, replacement, replacementActive);
         if (hasCurrent && !current.rule.empty())
         {
@@ -260,13 +263,13 @@ std::vector<ParsedFix> parseClangTidyFixes(const std::string& yamlText)
         }
         else if (inReplacements && key == "Offset")
         {
-            replacement.offset = std::strtoll(std::string(trim(value)).c_str(),
-                                              nullptr, 10);
+            replacement.offset =
+                std::strtoll(std::string(trim(value)).c_str(), nullptr, 10);
         }
         else if (inReplacements && key == "Length")
         {
-            replacement.length = std::strtoll(std::string(trim(value)).c_str(),
-                                              nullptr, 10);
+            replacement.length =
+                std::strtoll(std::string(trim(value)).c_str(), nullptr, 10);
         }
         else if (inReplacements && key == "ReplacementText")
         {
@@ -303,7 +306,8 @@ void attachFixes(UnifiedReport& report, const std::string& yamlText,
     // Resolve the line for each parsed fix from its first replacement offset.
     std::map<std::string, std::vector<std::string>> lineCache;
     auto lineForOffset = [&](const std::filesystem::path& file,
-                             long long offset) -> std::uint32_t {
+                             long long offset) -> std::uint32_t
+    {
         const std::string key = file.generic_string();
         auto it = lineCache.find(key);
         if (it == lineCache.end())
@@ -334,7 +338,8 @@ void attachFixes(UnifiedReport& report, const std::string& yamlText,
         }
 
         const auto& lines = it->second;
-        std::size_t remaining = offset < 0 ? 0 : static_cast<std::size_t>(offset);
+        std::size_t remaining =
+            offset < 0 ? 0 : static_cast<std::size_t>(offset);
         std::uint32_t line = 1;
         for (const auto& text : lines)
         {
@@ -375,7 +380,8 @@ void attachFixes(UnifiedReport& report, const std::string& yamlText,
             for (auto& finding : report.findings)
             {
                 if (finding.line && *finding.line == line &&
-                    finding.file.generic_string() == relativeFile.generic_string())
+                    finding.file.generic_string() ==
+                        relativeFile.generic_string())
                 {
                     target = &finding;
                     break;
@@ -385,7 +391,8 @@ void attachFixes(UnifiedReport& report, const std::string& yamlText,
 
         if (!target && !fix.message.empty())
         {
-            // Position inconclusive: only trust an unambiguous rule+message match.
+            // Position inconclusive: only trust an unambiguous rule+message
+            // match.
             Finding* candidate = nullptr;
             int matches = 0;
             for (auto& finding : report.findings)

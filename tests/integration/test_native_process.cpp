@@ -23,8 +23,8 @@ TEST(native_process_captures_stdout)
 
     ProcessRequest req;
 #ifdef _WIN32
-    // Prefer MSYS2 tools when available; fall back to cmd echo is awkward with argv.
-    // Use where.exe which always exists on Windows.
+    // Prefer MSYS2 tools when available; fall back to cmd echo is awkward with
+    // argv. Use where.exe which always exists on Windows.
     req.executable = "C:\\Windows\\System32\\cmd.exe";
     req.arguments = {"/C", "echo hello-cppsentinel"};
 #else
@@ -44,8 +44,7 @@ TEST(native_process_captures_stdout)
     if (result.state == ProcessState::Succeeded)
     {
         std::string err;
-        auto text = readTextFile(outLog, err);
-        REQUIRE(text.has_value());
-        REQUIRE(text->find("hello-cppsentinel") != std::string::npos);
+        const auto text = REQUIRE_VALUE(readTextFile(outLog, err));
+        REQUIRE(text.find("hello-cppsentinel") != std::string::npos);
     }
 }

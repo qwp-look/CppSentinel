@@ -50,8 +50,7 @@ std::string trimSnippet(std::string line)
         line.pop_back();
     }
     std::size_t start = 0;
-    while (start < line.size() &&
-           (line[start] == ' ' || line[start] == '\t'))
+    while (start < line.size() && (line[start] == ' ' || line[start] == '\t'))
     {
         ++start;
     }
@@ -66,7 +65,8 @@ std::string trimSnippet(std::string line)
 
 } // namespace
 
-void attachSnippets(UnifiedReport& report, const std::filesystem::path& projectRoot)
+void attachSnippets(UnifiedReport& report,
+                    const std::filesystem::path& projectRoot)
 {
     std::map<std::string, std::vector<std::string>> fileCache;
 

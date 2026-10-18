@@ -21,8 +21,9 @@ namespace fs = std::filesystem;
 
 bool tryCreateExclusiveDir(const fs::path& path, std::string& errorMessage)
 {
-    // create_directories reuses existing trees; use create_directory on the leaf
-    // after ensuring the parent exists, and require that the leaf did not exist.
+    // create_directories reuses existing trees; use create_directory on the
+    // leaf after ensuring the parent exists, and require that the leaf did not
+    // exist.
     std::error_code ec;
     const auto parent = path.parent_path();
     if (!parent.empty())
@@ -30,9 +31,8 @@ bool tryCreateExclusiveDir(const fs::path& path, std::string& errorMessage)
         fs::create_directories(parent, ec);
         if (ec)
         {
-            errorMessage =
-                "failed to create report parent '" + parent.string() + "': " +
-                ec.message();
+            errorMessage = "failed to create report parent '" +
+                           parent.string() + "': " + ec.message();
             return false;
         }
     }
@@ -46,8 +46,8 @@ bool tryCreateExclusiveDir(const fs::path& path, std::string& errorMessage)
     if (!fs::create_directory(path, ec) || ec)
     {
         errorMessage = "failed to create exclusive report directory '" +
-                       path.string() + "': " +
-                       (ec ? ec.message() : "unknown error");
+                       path.string() +
+                       "': " + (ec ? ec.message() : "unknown error");
         return false;
     }
     return true;
@@ -75,7 +75,8 @@ bool directoryIsWritable(const fs::path& dir, std::string& errorMessage)
 bool writeAtomic(const fs::path& path, const std::string& content,
                  std::string& errorMessage)
 {
-    const fs::path tmp = path.parent_path() / (path.filename().string() + ".tmp");
+    const fs::path tmp =
+        path.parent_path() / (path.filename().string() + ".tmp");
     if (!writeTextFile(tmp, content, errorMessage))
     {
         return false;
@@ -107,8 +108,8 @@ std::optional<ReportLayout> createReportLayout(const fs::path& baseDir,
     const fs::path absoluteBase = fs::absolute(baseDir, ec);
     if (ec)
     {
-        errorMessage = "cannot resolve report base '" + baseDir.string() + "': " +
-                       ec.message();
+        errorMessage = "cannot resolve report base '" + baseDir.string() +
+                       "': " + ec.message();
         return std::nullopt;
     }
 
@@ -127,8 +128,8 @@ std::optional<ReportLayout> createReportLayout(const fs::path& baseDir,
         std::string runId = stamp;
         if (attempt > 0)
         {
-            runId += "_" + std::to_string(attempt) + "_" +
-                     std::to_string(dist(rng));
+            runId +=
+                "_" + std::to_string(attempt) + "_" + std::to_string(dist(rng));
         }
 
         const fs::path root = absoluteBase / runId;
@@ -232,8 +233,8 @@ bool ReportWriter::writeArtifacts(const RunReport& report,
     {
         return false;
     }
-    if (!writeAtomic(layout_.root / "summary.txt", formatUnifiedSummary(unified),
-                     errorMessage))
+    if (!writeAtomic(layout_.root / "summary.txt",
+                     formatUnifiedSummary(unified), errorMessage))
     {
         return false;
     }

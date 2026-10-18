@@ -44,11 +44,13 @@ void applyEnvOverrides(std::vector<std::string>& env,
     for (const auto& [key, value] : overrides)
     {
         env.erase(std::remove_if(env.begin(), env.end(),
-                                 [&](const std::string& item) {
-                                     return iequals(keyOf(item), key);
-                                 }),
+                                 [&](const std::string& item)
+                                 { return iequals(keyOf(item), key); }),
                   env.end());
-        env.push_back(key + "=" + value);
+        std::string entry = key;
+        entry.push_back('=');
+        entry += value;
+        env.push_back(std::move(entry));
     }
 }
 
@@ -57,11 +59,11 @@ buildEnvironmentBlock(bool inheritParent, const EnvironmentProfile* profile,
                       const std::map<std::string, std::string>& extra)
 {
     std::vector<std::string> env;
-    if (inheritParent && (!profile || profile->inherit_parent))
-    {
-        env = captureParentEnvironment();
-    }
-    else if (profile && profile->inherit_parent)
+    // Both former branches did the same thing; the profile decides when
+    // present.
+    const bool inherit =
+        profile != nullptr ? profile->inherit_parent : inheritParent;
+    if (inherit)
     {
         env = captureParentEnvironment();
     }

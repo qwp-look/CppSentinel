@@ -29,7 +29,7 @@ std::string projectFingerprint(const std::filesystem::path& root);
 
 class ResultCache
 {
-public:
+  public:
     ResultCache(std::filesystem::path directory, bool enabled);
 
     bool enabled() const noexcept
@@ -45,7 +45,7 @@ public:
 
     void store(const std::string& key, const CheckerResult& result) const;
 
-private:
+  private:
     std::filesystem::path directory_;
     bool enabled_ = false;
 };

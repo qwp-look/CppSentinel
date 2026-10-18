@@ -49,12 +49,14 @@ Diagnostics:
     const auto parsed = parseClangTidyFixes(yaml);
     REQUIRE(parsed.size() == 2);
     REQUIRE(parsed[0].rule == "modernize-use-nodiscard");
-    REQUIRE(parsed[0].message == "function 'total' should be marked [[nodiscard]]");
+    REQUIRE(parsed[0].message ==
+            "function 'total' should be marked [[nodiscard]]");
     REQUIRE(parsed[0].replacements.size() == 1);
     REQUIRE(parsed[0].replacements[0].offset == 42);
     REQUIRE(parsed[0].replacements[0].length == 0);
     REQUIRE(parsed[0].replacements[0].text == "[[nodiscard]] ");
-    REQUIRE(parsed[0].replacements[0].file.generic_string() == "/proj/src/a.cpp");
+    REQUIRE(parsed[0].replacements[0].file.generic_string() ==
+            "/proj/src/a.cpp");
     REQUIRE(parsed[1].replacements[0].text == "auto");
 }
 
@@ -100,18 +102,19 @@ TEST(fixes_attach_to_findings_by_position)
     // Offset of the second line's first character.
     const long long secondLineOffset = 9; // "int one;\n"
 
-    const std::string yaml = "Diagnostics:\n"
-                             "  - DiagnosticName:  modernize-use-nodiscard\n"
-                             "    Message:         function 'total' should be marked\n"
-                             "    FilePath:        " +
-                             sourcePath.generic_string() +
-                             "\n    FileOffset:      9\n"
-                             "    Replacements:\n"
-                             "      - FilePath:        " +
-                             sourcePath.generic_string() +
-                             "\n        Offset:          9\n"
-                             "        Length:          0\n"
-                             "        ReplacementText: '[[nodiscard]] '\n";
+    const std::string yaml =
+        "Diagnostics:\n"
+        "  - DiagnosticName:  modernize-use-nodiscard\n"
+        "    Message:         function 'total' should be marked\n"
+        "    FilePath:        " +
+        sourcePath.generic_string() +
+        "\n    FileOffset:      9\n"
+        "    Replacements:\n"
+        "      - FilePath:        " +
+        sourcePath.generic_string() +
+        "\n        Offset:          9\n"
+        "        Length:          0\n"
+        "        ReplacementText: '[[nodiscard]] '\n";
 
     UnifiedReport report;
     Finding finding;
@@ -128,6 +131,8 @@ TEST(fixes_attach_to_findings_by_position)
     REQUIRE(report.findings.size() == 1);
     REQUIRE(report.findings[0].fixes.size() == 1);
     REQUIRE(report.findings[0].fixes[0].replacements.size() == 1);
-    REQUIRE(report.findings[0].fixes[0].replacements[0].offset == secondLineOffset);
-    REQUIRE(report.findings[0].fixes[0].replacements[0].text == "[[nodiscard]] ");
+    REQUIRE(report.findings[0].fixes[0].replacements[0].offset ==
+            secondLineOffset);
+    REQUIRE(report.findings[0].fixes[0].replacements[0].text ==
+            "[[nodiscard]] ");
 }

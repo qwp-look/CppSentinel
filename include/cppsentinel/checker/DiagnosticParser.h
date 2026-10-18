@@ -16,8 +16,8 @@ namespace cppsentinel
 ///   path:line:col: severity: message [rule]
 std::vector<Diagnostic> parseClangStyleDiagnostics(std::string_view text);
 
-/// Parse cppcheck --template='{file}:{line}:{column}: {severity}: {message} [{id}]'
-/// (same shape as clang-style for the template we pass).
+/// Parse cppcheck --template='{file}:{line}:{column}: {severity}: {message}
+/// [{id}]' (same shape as clang-style for the template we pass).
 std::vector<Diagnostic> parseCppcheckDiagnostics(std::string_view text);
 
 Severity parseSeverityToken(std::string_view token);

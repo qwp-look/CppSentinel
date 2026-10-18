@@ -2,8 +2,8 @@
 
 #include "cppsentinel/report/Baseline.h"
 
-#include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -127,10 +127,8 @@ TEST(baseline_load_rejects_broken_file)
     std::error_code ec;
     fs::create_directories(path.parent_path(), ec);
     {
-        std::FILE* file = std::fopen(path.string().c_str(), "wb");
-        REQUIRE(file != nullptr);
-        std::fputs("{ not json", file);
-        std::fclose(file);
+        std::ofstream out(path, std::ios::trunc);
+        out << "{ not json";
     }
 
     BaselineData data;

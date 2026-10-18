@@ -1,8 +1,9 @@
 #pragma once
 
 // `CppSentinel doctor`: verify that a configuration can actually run.
-// Checks are read-only; nothing is modified or started except tool version probes
-// (added by the caller through `probe` so tests can run without a toolchain).
+// Checks are read-only; nothing is modified or started except tool version
+// probes (added by the caller through `probe` so tests can run without a
+// toolchain).
 
 #include "cppsentinel/config/AppConfig.h"
 
@@ -32,9 +33,9 @@ struct DoctorReport
 
 /// Optional hook used to probe a tool executable (e.g. `<exe> --version`).
 /// Returns an empty string when the probe is unavailable.
-using ToolProbe = std::function<std::string(const std::string& checkerId,
-                                            const EnvironmentProfile& environment,
-                                            const std::string& executable)>;
+using ToolProbe = std::function<std::string(
+    const std::string& checkerId, const EnvironmentProfile& environment,
+    const std::string& executable)>;
 
 DoctorReport runDoctor(const AppConfig& config, const ToolProbe& probe = {});
 

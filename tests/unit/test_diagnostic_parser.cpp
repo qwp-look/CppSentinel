@@ -6,9 +6,9 @@ using namespace cppsentinel;
 
 TEST(parse_clang_style_diagnostic)
 {
-    const char* text =
-        "main.cpp:10:5: warning: unused variable 'x' [clang-diagnostic-unused-variable]\n"
-        "C:/proj/a.cpp:1:1: error: file not found\n";
+    const char* text = "main.cpp:10:5: warning: unused variable 'x' "
+                       "[clang-diagnostic-unused-variable]\n"
+                       "C:/proj/a.cpp:1:1: error: file not found\n";
 
     auto diags = parseClangStyleDiagnostics(text);
     REQUIRE(diags.size() == 2);
@@ -22,8 +22,8 @@ TEST(parse_clang_style_diagnostic)
 
 TEST(parse_cppcheck_template)
 {
-    const char* text =
-        "foo.cpp:3:1: style: The function 'f' is never used. [unusedFunction]\n";
+    const char* text = "foo.cpp:3:1: style: The function 'f' is never used. "
+                       "[unusedFunction]\n";
     auto diags = parseCppcheckDiagnostics(text);
     REQUIRE(diags.size() == 1);
     REQUIRE(diags[0].severity == Severity::Style);

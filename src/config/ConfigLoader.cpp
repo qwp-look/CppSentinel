@@ -117,9 +117,10 @@ ConfigLoadResult loadConfig(const std::filesystem::path& configPath)
         return result;
     }
 
-    const auto configDir = configPath.parent_path().empty()
-                               ? std::filesystem::current_path()
-                               : std::filesystem::absolute(configPath.parent_path());
+    const auto configDir =
+        configPath.parent_path().empty()
+            ? std::filesystem::current_path()
+            : std::filesystem::absolute(configPath.parent_path());
 
     toml::table table;
     try
@@ -151,10 +152,10 @@ ConfigLoadResult loadConfig(const std::filesystem::path& configPath)
         const std::string k(key.str());
         if (!allowedTop.count(k))
         {
-            addError(result.diagnostics, k,
-                     "unknown top-level key '" + k + "'",
-                     "v2 allows schema_version, project, run, environment, "
-                     "checker ([[checker]]) only; remove legacy [Method] tables");
+            addError(
+                result.diagnostics, k, "unknown top-level key '" + k + "'",
+                "v2 allows schema_version, project, run, environment, "
+                "checker ([[checker]]) only; remove legacy [Method] tables");
         }
     }
 
@@ -188,8 +189,9 @@ ConfigLoadResult loadConfig(const std::filesystem::path& configPath)
         {
             if (!allowedProject.count(std::string(key.str())))
             {
-                addError(result.diagnostics, "project." + std::string(key.str()),
-                         "unknown field", "Remove or rename the field");
+                addError(result.diagnostics,
+                         "project." + std::string(key.str()), "unknown field",
+                         "Remove or rename the field");
             }
         }
 
@@ -199,10 +201,10 @@ ConfigLoadResult loadConfig(const std::filesystem::path& configPath)
         }
         else
         {
-            result.config.project.root = configDir.parent_path().empty()
-                                             ? configDir
-                                             : std::filesystem::absolute(
-                                                   configDir / "..");
+            result.config.project.root =
+                configDir.parent_path().empty()
+                    ? configDir
+                    : std::filesystem::absolute(configDir / "..");
         }
 
         if (auto cdb = (*project)["compilation_database"].value<std::string>())
@@ -213,7 +215,8 @@ ConfigLoadResult loadConfig(const std::filesystem::path& configPath)
 
         if (auto report = (*project)["report_dir"].value<std::string>())
         {
-            result.config.project.report_dir = resolveAgainst(configDir, *report);
+            result.config.project.report_dir =
+                resolveAgainst(configDir, *report);
         }
         else
         {
@@ -223,20 +226,19 @@ ConfigLoadResult loadConfig(const std::filesystem::path& configPath)
     }
     else
     {
-        addError(result.diagnostics, "project",
-                 "[project] table is required",
+        addError(result.diagnostics, "project", "[project] table is required",
                  "Add [project] with root / report_dir");
         result.config.project.root = configDir;
-        result.config.project.report_dir = resolveAgainst(configDir, "../report");
+        result.config.project.report_dir =
+            resolveAgainst(configDir, "../report");
     }
 
     // run
     if (const auto* run = table["run"].as_table())
     {
         static const std::set<std::string> allowedRun = {
-            "max_parallel", "timeout_seconds", "fail_on",
-            "baseline", "fail_on_new", "update_baseline", "cache",
-            "cache_dir"};
+            "max_parallel", "timeout_seconds", "fail_on", "baseline",
+            "fail_on_new",  "update_baseline", "cache",   "cache_dir"};
         for (auto&& [key, value] : *run)
         {
             if (!allowedRun.count(std::string(key.str())))
@@ -314,15 +316,16 @@ ConfigLoadResult loadConfig(const std::filesystem::path& configPath)
     if (result.config.run.cache_dir.empty() &&
         !result.config.project.report_dir.empty())
     {
-        result.config.run.cache_dir = result.config.project.report_dir / ".cache";
+        result.config.run.cache_dir =
+            result.config.project.report_dir / ".cache";
     }
 
     // filter
     if (const auto* filter = table["filter"].as_table())
     {
         static const std::set<std::string> allowedFilter = {
-            "ignore_rules", "ignore_paths", "ignore_messages", "min_severity",
-            "inline_suppressions", "ignore_outside_project"};
+            "ignore_rules", "ignore_paths",        "ignore_messages",
+            "min_severity", "inline_suppressions", "ignore_outside_project"};
         for (auto&& [key, value] : *filter)
         {
             if (!allowedFilter.count(std::string(key.str())))
@@ -392,7 +395,8 @@ ConfigLoadResult loadConfig(const std::filesystem::path& configPath)
                 if (!allowedEnv.count(std::string(ek.str())))
                 {
                     addError(result.diagnostics,
-                             "environment." + name + "." + std::string(ek.str()),
+                             "environment." + name + "." +
+                                 std::string(ek.str()),
                              "unknown field");
                 }
             }
@@ -411,7 +415,8 @@ ConfigLoadResult loadConfig(const std::filesystem::path& configPath)
                 }
                 else
                 {
-                    addError(result.diagnostics, "environment." + name + ".kind",
+                    addError(result.diagnostics,
+                             "environment." + name + ".kind",
                              "invalid kind '" + *kind + "'",
                              "Use kind = \"native\" or \"msys2\"");
                 }
@@ -419,7 +424,8 @@ ConfigLoadResult loadConfig(const std::filesystem::path& configPath)
             else
             {
                 addError(result.diagnostics, "environment." + name + ".kind",
-                         "kind is required", "Set kind = \"msys2\" or \"native\"");
+                         "kind is required",
+                         "Set kind = \"msys2\" or \"native\"");
             }
 
             if (auto root = (*et)["root"].value<std::string>())
@@ -468,9 +474,10 @@ ConfigLoadResult loadConfig(const std::filesystem::path& configPath)
 #ifndef _WIN32
             if (profile.kind == EnvironmentKind::Msys2)
             {
-                addError(result.diagnostics, "environment." + name,
-                         "msys2 environments are not supported on this platform",
-                         "Use kind = \"native\" on Linux");
+                addError(
+                    result.diagnostics, "environment." + name,
+                    "msys2 environments are not supported on this platform",
+                    "Use kind = \"native\" on Linux");
             }
 #endif
 
@@ -489,24 +496,28 @@ ConfigLoadResult loadConfig(const std::filesystem::path& configPath)
             const auto* ct = item.as_table();
             if (!ct)
             {
-                addError(result.diagnostics, prefix, "checker entry must be a table");
+                addError(result.diagnostics, prefix,
+                         "checker entry must be a table");
                 ++index;
                 continue;
             }
 
             static const std::set<std::string> allowedChecker = {
-                "id",         "kind",     "enabled", "environment",
-                "extra_args", "timeout_seconds", "options",
-                // common optional knobs stored in options map if present as scalars
+                "id", "kind", "enabled", "environment", "extra_args",
+                "timeout_seconds", "options",
+                // common optional knobs stored in options map if present as
+                // scalars
                 "checks", "header_filter", "compiler", "std", "enable",
                 "suppressions", "style", "executable"};
             for (auto&& [ck, cv] : *ct)
             {
                 if (!allowedChecker.count(std::string(ck.str())))
                 {
-                    addError(result.diagnostics, prefix + "." + std::string(ck.str()),
-                             "unknown field '" + std::string(ck.str()) + "'",
-                             "Remove unknown fields; tool flags go in extra_args");
+                    addError(
+                        result.diagnostics,
+                        prefix + "." + std::string(ck.str()),
+                        "unknown field '" + std::string(ck.str()) + "'",
+                        "Remove unknown fields; tool flags go in extra_args");
                 }
             }
 
@@ -535,7 +546,8 @@ ConfigLoadResult loadConfig(const std::filesystem::path& configPath)
             }
             else
             {
-                addError(result.diagnostics, prefix + ".kind", "kind is required",
+                addError(result.diagnostics, prefix + ".kind",
+                         "kind is required",
                          "Set kind to a built-in checker (clang-tidy, ...)");
             }
 
@@ -558,7 +570,8 @@ ConfigLoadResult loadConfig(const std::filesystem::path& configPath)
                     if (!(*extra)[i].is_string())
                     {
                         addError(result.diagnostics,
-                                 prefix + ".extra_args[" + std::to_string(i) + "]",
+                                 prefix + ".extra_args[" + std::to_string(i) +
+                                     "]",
                                  "extra_args elements must be strings");
                     }
                 }
@@ -594,7 +607,8 @@ ConfigLoadResult loadConfig(const std::filesystem::path& configPath)
                 {
                     addError(result.diagnostics, prefix + ".id",
                              "duplicate checker id '" + checker.id + "'",
-                             "Checker ids must be unique; they map to log/artifact names");
+                             "Checker ids must be unique; they map to "
+                             "log/artifact names");
                 }
             }
 

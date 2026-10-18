@@ -77,7 +77,8 @@ DoctorReport runDoctor(const AppConfig& config, const ToolProbe& probe)
 {
     DoctorReport report;
     auto add = [&report](std::string name, bool ok, std::string detail,
-                         std::string hint = {}, bool warning = false) {
+                         std::string hint = {}, bool warning = false)
+    {
         DoctorCheck check;
         check.name = std::move(name);
         check.ok = ok;
@@ -89,8 +90,8 @@ DoctorReport runDoctor(const AppConfig& config, const ToolProbe& probe)
 
     // config
     std::error_code ec;
-    const bool configExists =
-        !config.config_path.empty() && fs::is_regular_file(config.config_path, ec);
+    const bool configExists = !config.config_path.empty() &&
+                              fs::is_regular_file(config.config_path, ec);
     add("config", configExists,
         config.config_path.empty() ? "no configuration path"
                                    : config.config_path.generic_string());
@@ -112,8 +113,8 @@ DoctorReport runDoctor(const AppConfig& config, const ToolProbe& probe)
         }
     }
     const bool cdbSet = !config.project.compilation_database.empty();
-    const bool cdbOk = cdbSet &&
-                       fs::is_regular_file(config.project.compilation_database, ec);
+    const bool cdbOk =
+        cdbSet && fs::is_regular_file(config.project.compilation_database, ec);
     if (cdbOk)
     {
         add("compilation_database", true,
@@ -136,9 +137,9 @@ DoctorReport runDoctor(const AppConfig& config, const ToolProbe& probe)
 
     // report directory
     std::string writableDetail;
-    const bool writable = !config.project.report_dir.empty() &&
-                          directoryWritable(config.project.report_dir,
-                                            writableDetail);
+    const bool writable =
+        !config.project.report_dir.empty() &&
+        directoryWritable(config.project.report_dir, writableDetail);
     add("report_dir", writable,
         writable ? config.project.report_dir.generic_string() : writableDetail,
         writable ? "" : "Check permissions on [project].report_dir");
@@ -152,8 +153,8 @@ DoctorReport runDoctor(const AppConfig& config, const ToolProbe& probe)
             const auto install = findMsys2Install(&profile, msysError);
             add("environment." + name, install.has_value(),
                 install ? install->root.generic_string() : msysError,
-                install ? "" : "Set [environment." + name +
-                                   "].root or MSYS2_ROOT");
+                install ? ""
+                        : "Set [environment." + name + "].root or MSYS2_ROOT");
         }
         else
         {
@@ -172,7 +173,8 @@ DoctorReport runDoctor(const AppConfig& config, const ToolProbe& probe)
         const auto envIt = config.environments.find(checker.environment);
         if (envIt == config.environments.end())
         {
-            add(name, false, "unknown environment '" + checker.environment + "'");
+            add(name, false,
+                "unknown environment '" + checker.environment + "'");
             continue;
         }
 
@@ -189,7 +191,8 @@ DoctorReport runDoctor(const AppConfig& config, const ToolProbe& probe)
             continue;
         }
 
-        const std::string version = probe(checker.id, envIt->second, executable);
+        const std::string version =
+            probe(checker.id, envIt->second, executable);
         if (version.empty())
         {
             add(name, false,
@@ -225,7 +228,7 @@ DoctorReport runDoctor(const AppConfig& config, const ToolProbe& probe)
         else
         {
             add("baseline", true,
-                "not created yet: " + config.baseline.path.generic_string(), 
+                "not created yet: " + config.baseline.path.generic_string(),
                 "Run with --update-baseline to record current findings", true);
         }
     }
@@ -238,7 +241,8 @@ std::string formatDoctorText(const DoctorReport& report)
     std::string out;
     for (const auto& check : report.checks)
     {
-        const char* status = !check.ok ? "FAIL" : (check.warning ? "WARN" : "ok  ");
+        const char* status =
+            !check.ok ? "FAIL" : (check.warning ? "WARN" : "ok  ");
         out += "[";
         out += status;
         out += "] ";

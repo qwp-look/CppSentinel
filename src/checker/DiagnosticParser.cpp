@@ -15,8 +15,7 @@ namespace
 
 std::string_view trim(std::string_view s)
 {
-    while (!s.empty() &&
-           std::isspace(static_cast<unsigned char>(s.front())))
+    while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front())))
     {
         s.remove_prefix(1);
     }
@@ -183,8 +182,8 @@ std::vector<Diagnostic> parseClangStyleDiagnostics(std::string_view text)
         d.line = lineNo;
         d.column = colNo;
         d.severity = parseSeverityToken(sevTok);
-        // "note:" lines annotate the preceding diagnostic (fix-it hints, why the
-        // analyzer fired, ...). They are context, not independent findings.
+        // "note:" lines annotate the preceding diagnostic (fix-it hints, why
+        // the analyzer fired, ...). They are context, not independent findings.
         if (iequals(sevTok, "note") || iequals(sevTok, "remark"))
         {
             d.role = DiagnosticRole::Note;

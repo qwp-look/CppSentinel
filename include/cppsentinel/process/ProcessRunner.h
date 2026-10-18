@@ -11,10 +11,11 @@ namespace cppsentinel
 
 class ProcessRunner
 {
-public:
+  public:
     virtual ~ProcessRunner() = default;
 
-    /// Launch request.executable with request.arguments; capture logs + timeout.
+    /// Launch request.executable with request.arguments; capture logs +
+    /// timeout.
     virtual ProcessResult run(const ProcessRequest& request) const = 0;
 };
 

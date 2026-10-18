@@ -138,8 +138,7 @@ std::filesystem::path resolveExecutablePath(std::string_view name)
 
     std::string pathValue(pathEnv);
     // Windows PATH uses ';'; MSYS shells export a ':' separated list.
-    const char separator =
-        pathValue.find(';') != std::string::npos ? ';' : ':';
+    const char separator = pathValue.find(';') != std::string::npos ? ';' : ':';
 
     static const char* kExtensions[] = {"", ".exe", ".cmd", ".bat", ".com"};
 

@@ -57,8 +57,8 @@ struct RunSettings
     int max_parallel = 1; ///< Number of checkers to run concurrently
     std::chrono::seconds timeout_seconds{120};
     FailOn fail_on = FailOn::Warning;
-    bool cache = false;                     ///< reuse unchanged checker results
-    std::filesystem::path cache_dir;        ///< defaults to report_dir/.cache
+    bool cache = false;              ///< reuse unchanged checker results
+    std::filesystem::path cache_dir; ///< defaults to report_dir/.cache
 };
 
 /// Maximum accepted run.max_parallel (guards against absurd thread counts).
@@ -71,9 +71,10 @@ struct FilterSettings
     std::vector<std::string> ignore_paths;    ///< glob vs project-relative path
     std::vector<std::string> ignore_messages; ///< case-insensitive substring
     bool has_min_severity = false;
-    Severity min_severity = Severity::Unknown; ///< drop findings below this level
-    bool inline_suppressions = true;           ///< honour cppsentinel-disable comments
-    bool ignore_outside_project = false;       ///< drop findings outside project_root
+    Severity min_severity =
+        Severity::Unknown;           ///< drop findings below this level
+    bool inline_suppressions = true; ///< honour cppsentinel-disable comments
+    bool ignore_outside_project = false; ///< drop findings outside project_root
 };
 
 /// Baseline (known findings) comparison settings.

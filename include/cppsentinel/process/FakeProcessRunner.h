@@ -12,7 +12,7 @@ namespace cppsentinel
 
 class FakeProcessRunner final : public ProcessRunner
 {
-public:
+  public:
     using Handler = std::function<ProcessResult(const ProcessRequest&)>;
 
     void setHandler(Handler handler);
@@ -25,7 +25,7 @@ public:
 
     ProcessResult run(const ProcessRequest& request) const override;
 
-private:
+  private:
     mutable std::vector<ProcessRequest> requests_;
     mutable std::vector<ProcessResult> queue_;
     Handler handler_;

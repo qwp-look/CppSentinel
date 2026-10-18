@@ -119,8 +119,8 @@ ProcessResult Msys2ProcessRunner::run(const ProcessRequest& request) const
     }
 
     // bash -l -c 'exec "$@"' cppsentinel-tool <exe> <args...>
-    // argv after -c script become $0, $1, ... so exec "$@" re-execs without shell
-    // word-splitting on tool arguments.
+    // argv after -c script become $0, $1, ... so exec "$@" re-execs without
+    // shell word-splitting on tool arguments.
     std::vector<std::string> bashArgs;
     bashArgs.emplace_back("-l");
     bashArgs.emplace_back("-c");
@@ -134,11 +134,12 @@ ProcessResult Msys2ProcessRunner::run(const ProcessRequest& request) const
         bashArgs.push_back(arg);
     }
 
-    // Keep every argument byte-for-byte: no POSIX rewriting, no MSYS2 conversion.
+    // Keep every argument byte-for-byte: no POSIX rewriting, no MSYS2
+    // conversion.
     std::map<std::string, std::string> extraEnv = request.environment;
     extraEnv[kArgConvExcl] = "*";
-    auto env = buildEnvironmentBlock(request.inherit_parent_env, &profile_,
-                                     extraEnv);
+    auto env =
+        buildEnvironmentBlock(request.inherit_parent_env, &profile_, extraEnv);
 
     fs::path cwd = request.working_directory;
     // Keep working directory as native path for CreateProcess start dir.

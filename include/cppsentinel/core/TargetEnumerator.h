@@ -16,8 +16,8 @@ namespace cppsentinel
 struct TargetSet
 {
     std::vector<std::filesystem::path> files; ///< absolute, sorted, unique
-    std::size_t excluded = 0;                 ///< files dropped by exclude globs
-    bool truncated = false;                   ///< directory walk hit an error
+    std::size_t excluded = 0; ///< files dropped by exclude globs
+    bool truncated = false;   ///< directory walk hit an error
 };
 
 /// True for extensions handled by the built-in checkers.

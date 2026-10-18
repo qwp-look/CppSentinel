@@ -28,13 +28,12 @@ std::string firstVersionLine(std::string_view text)
         }
         std::string_view line = text.substr(pos, end - pos);
         pos = end + 1;
-        while (!line.empty() &&
-               (line.back() == '\r' || line.back() == ' ' || line.back() == '\t'))
+        while (!line.empty() && (line.back() == '\r' || line.back() == ' ' ||
+                                 line.back() == '\t'))
         {
             line.remove_suffix(1);
         }
-        while (!line.empty() &&
-               (line.front() == ' ' || line.front() == '\t'))
+        while (!line.empty() && (line.front() == ' ' || line.front() == '\t'))
         {
             line.remove_prefix(1);
         }

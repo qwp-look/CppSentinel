@@ -40,8 +40,8 @@ bool writeTextFile(const std::filesystem::path& path, std::string_view content,
         std::filesystem::create_directories(parent, ec);
         if (ec)
         {
-            errorMessage = "failed to create parent for " + path.string() + ": " +
-                           ec.message();
+            errorMessage = "failed to create parent for " + path.string() +
+                           ": " + ec.message();
             return false;
         }
     }
@@ -68,9 +68,15 @@ std::tm localTm(std::time_t t)
 {
     std::tm local{};
 #ifdef _WIN32
-    localtime_s(&local, &t);
+    if (localtime_s(&local, &t) != 0)
+    {
+        return {};
+    }
 #else
-    localtime_r(&t, &local);
+    if (localtime_r(&t, &local) == nullptr)
+    {
+        return {};
+    }
 #endif
     return local;
 }
@@ -105,7 +111,8 @@ std::string makeRunIdTimestamp()
     oss << std::setfill('0') << std::setw(4) << (tm.tm_year + 1900) << '_'
         << std::setw(2) << (tm.tm_mon + 1) << '_' << std::setw(2) << tm.tm_mday
         << '_' << std::setw(2) << tm.tm_hour << '_' << std::setw(2) << tm.tm_min
-        << '_' << std::setw(2) << tm.tm_sec << '_' << std::setw(3) << ms.count();
+        << '_' << std::setw(2) << tm.tm_sec << '_' << std::setw(3)
+        << ms.count();
     return oss.str();
 }
 

@@ -27,13 +27,15 @@ struct ReportLayout
     std::string run_id;
 };
 
-/// Create a unique report tree. Never reuses an existing directory (no create_directories race reuse).
+/// Create a unique report tree. Never reuses an existing directory (no
+/// create_directories race reuse).
 std::optional<ReportLayout>
-createReportLayout(const std::filesystem::path& baseDir, std::string& errorMessage);
+createReportLayout(const std::filesystem::path& baseDir,
+                   std::string& errorMessage);
 
 class ReportWriter
 {
-public:
+  public:
     explicit ReportWriter(ReportLayout layout);
 
     const ReportLayout& layout() const noexcept
@@ -43,7 +45,8 @@ public:
 
     std::filesystem::path checkerStdoutLog(const std::string& checkerId) const;
     std::filesystem::path checkerStderrLog(const std::string& checkerId) const;
-    std::filesystem::path checkerArtifactDir(const std::string& checkerId) const;
+    std::filesystem::path
+    checkerArtifactDir(const std::string& checkerId) const;
 
     /// Publish all report artifacts. Builds the unified layer from `report`
     /// using its project root as the normalization base.
@@ -53,7 +56,7 @@ public:
     bool writeReport(const RunReport& report, const UnifiedReport& unified,
                      std::string& errorMessage) const;
 
-private:
+  private:
     bool writeArtifacts(const RunReport& report, const UnifiedReport& unified,
                         std::string& errorMessage) const;
 

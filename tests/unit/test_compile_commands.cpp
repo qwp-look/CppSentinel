@@ -13,10 +13,10 @@ TEST(compile_commands_load_and_syntax_only)
     const auto dir = fs::temp_directory_path() / "cppsentinel_cdb";
     fs::create_directories(dir);
     const auto cdb = dir / "compile_commands.json";
-    const auto src = (dir / "main.cpp").generic_string();
     const auto body = std::string(R"([
   {
-    "directory": ")") + dir.generic_string() + R"(",
+    "directory": ")") +
+                      dir.generic_string() + R"(",
     "command": "g++ -std=c++20 -Iinclude -c main.cpp -o main.o",
     "file": "main.cpp"
   }
@@ -26,10 +26,10 @@ TEST(compile_commands_load_and_syntax_only)
 
     auto entries = loadCompileCommands(cdb, err);
     REQUIRE(!entries.empty());
-    auto found = findCompileCommand(entries, dir / "main.cpp");
-    REQUIRE(found.has_value());
+    const auto found =
+        REQUIRE_VALUE(findCompileCommand(entries, dir / "main.cpp"));
 
-    auto args = syntaxOnlyArgsFromCompileCommand(*found, dir / "main.cpp");
+    auto args = syntaxOnlyArgsFromCompileCommand(found, dir / "main.cpp");
     bool hasSyntax = false;
     bool hasO = false;
     for (const auto& a : args)

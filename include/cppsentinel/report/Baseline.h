@@ -39,8 +39,8 @@ std::string serializeBaseline(const BaselineData& baseline);
 bool loadBaseline(const std::filesystem::path& path, BaselineData& baseline,
                   std::string& errorMessage);
 
-bool saveBaseline(const std::filesystem::path& path, const BaselineData& baseline,
-                  std::string& errorMessage);
+bool saveBaseline(const std::filesystem::path& path,
+                  const BaselineData& baseline, std::string& errorMessage);
 
 /// Mark every finding as new/known and record vanished entries as fixed.
 void applyBaseline(UnifiedReport& report, const BaselineData& baseline,

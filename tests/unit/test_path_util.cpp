@@ -50,7 +50,8 @@ TEST(path_resolve_against)
     const auto rel = resolveAgainst(base, "foo.toml");
     REQUIRE(rel.filename() == "foo.toml");
     const auto abs = resolveAgainst(base, "/abs/x");
-    REQUIRE(abs.is_absolute() || abs.generic_string().find("abs") != std::string::npos);
+    REQUIRE(abs.is_absolute() ||
+            abs.generic_string().find("abs") != std::string::npos);
 }
 
 TEST(resolve_executable_path_keeps_explicit_paths)
