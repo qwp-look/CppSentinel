@@ -176,13 +176,13 @@ TEST(unified_json_uses_schema_3_with_findings)
     const auto unified = buildUnifiedReport(makeReport({tidy}), options());
     const auto json = serializeUnifiedReportJson(unified);
 
-    REQUIRE(json.find("\"schema_version\":3") != std::string::npos);
-    REQUIRE(json.find("\"findings\":[") != std::string::npos);
-    REQUIRE(json.find("\"summary\":{") != std::string::npos);
+    REQUIRE(json.find("\"schema_version\": 3") != std::string::npos);
+    REQUIRE(json.find("\"findings\": [") != std::string::npos);
+    REQUIRE(json.find("\"summary\": {") != std::string::npos);
     REQUIRE(json.find("\"by_severity\"") != std::string::npos);
     REQUIRE(json.find("src/a.cpp") != std::string::npos);
     REQUIRE(json.find("bugprone-foo") != std::string::npos);
-    REQUIRE(json.find("\"occurrences\":1") != std::string::npos);
+    REQUIRE(json.find("\"occurrences\": 1") != std::string::npos);
 }
 
 TEST(sarif_reports_version_rule_and_location)

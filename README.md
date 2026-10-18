@@ -220,7 +220,8 @@ Configuration/                default Configuration.toml
 tests/                        unit + integration (CTest)
 docs/                         architecture / configuration / boost notes
 scripts/vendor_boost.ps1      bcp refresh script
-third_party/toml.hpp          toml++
+third_party/toml.hpp          toml++ (TOML config)
+third_party/nlohmann/         nlohmann/json (baselines, cache, reports)
 third_party/boost/            bcp-extracted Boost.Process
 report/                       run outputs (contents gitignored)
 ```

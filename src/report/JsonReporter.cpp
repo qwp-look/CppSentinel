@@ -1,15 +1,17 @@
-// Hand-written JSON serializers for the raw (v2) and unified (v3) report layers.
-// No JSON dependency: output shape is small, fixed, and stable.
+// Report serializers built on nlohmann/json (third_party/nlohmann).
+//
+//   serializeRunReportJson     -> report.raw.json  (schema 2, compact)
+//   serializeUnifiedReportJson -> report.json      (schema 3, indented)
+//
+// ordered_json keeps the field order stable so report diffs stay readable.
 
 #include "cppsentinel/report/JsonReporter.h"
 
-#include "cppsentinel/report/JsonUtil.h"
+#include <nlohmann/json.hpp>
 
 #include <cstdint>
 #include <optional>
-#include <sstream>
 #include <string>
-#include <string_view>
 #include <vector>
 
 namespace cppsentinel
@@ -17,357 +19,283 @@ namespace cppsentinel
 namespace
 {
 
-std::string jsonString(std::string_view value)
-{
-    return '"' + json::escape(value) + '"';
-}
+using Json = nlohmann::ordered_json;
 
-std::string quotedPath(const std::filesystem::path& path)
+Json optionalNumber(const std::optional<std::uint32_t>& value)
 {
-    return jsonString(path.generic_string());
-}
-
-std::string number(long long value)
-{
-    return std::to_string(value);
-}
-
-std::string optionalNumber(const std::optional<std::uint32_t>& value)
-{
-    return value ? std::to_string(static_cast<long long>(*value)) : "null";
-}
-
-std::string optionalInt(const std::optional<int>& value)
-{
-    return value ? std::to_string(*value) : "null";
-}
-
-/// Accumulates "key":value members with automatic comma handling.
-struct ObjectBuilder
-{
-    std::string body;
-
-    void add(std::string_view key, std::string rawValue)
+    if (!value)
     {
-        if (!body.empty())
-        {
-            body.push_back(',');
-        }
-        body += jsonString(key);
-        body.push_back(':');
-        body += std::move(rawValue);
+        return nullptr;
     }
-
-    std::string build() const
-    {
-        return "{" + body + "}";
-    }
-};
-
-std::string arrayOf(const std::vector<std::string>& items)
-{
-    std::string out = "[";
-    for (std::size_t i = 0; i < items.size(); ++i)
-    {
-        if (i > 0)
-        {
-            out.push_back(',');
-        }
-        out += items[i];
-    }
-    out.push_back(']');
-    return out;
+    return *value;
 }
 
-std::string stringArray(const std::vector<std::string>& values)
+Json optionalInt(const std::optional<int>& value)
 {
-    std::vector<std::string> quotedValues;
-    quotedValues.reserve(values.size());
+    if (!value)
+    {
+        return nullptr;
+    }
+    return *value;
+}
+
+Json stringArray(const std::vector<std::string>& values)
+{
+    Json array = Json::array();
     for (const auto& value : values)
     {
-        quotedValues.push_back(jsonString(value));
+        array.push_back(value);
     }
-    return arrayOf(quotedValues);
+    return array;
 }
 
-std::string severityCountsJson(const SeverityCounts& counts)
+Json severityCountsJson(const SeverityCounts& counts)
 {
-    ObjectBuilder b;
-    b.add("error", number(static_cast<long long>(counts.error)));
-    b.add("warning", number(static_cast<long long>(counts.warning)));
-    b.add("style", number(static_cast<long long>(counts.style)));
-    b.add("information", number(static_cast<long long>(counts.information)));
-    b.add("unknown", number(static_cast<long long>(counts.unknown)));
-    b.add("total", number(static_cast<long long>(counts.total())));
-    return b.build();
+    Json object;
+    object["error"] = counts.error;
+    object["warning"] = counts.warning;
+    object["style"] = counts.style;
+    object["information"] = counts.information;
+    object["unknown"] = counts.unknown;
+    object["total"] = counts.total();
+    return object;
 }
 
-std::string metadataJson(const RunMetadata& metadata)
+Json metadataJson(const RunMetadata& metadata)
 {
-    ObjectBuilder b;
-    b.add("run_id", jsonString(metadata.run_id));
-    b.add("config_path", quotedPath(metadata.config_path));
-    b.add("target_path", quotedPath(metadata.target_path));
-    b.add("project_root", quotedPath(metadata.project_root));
-    b.add("report_dir", quotedPath(metadata.report_dir));
-    b.add("started_at", jsonString(metadata.started_at));
-    b.add("finished_at", jsonString(metadata.finished_at));
-    b.add("duration_ms", number(metadata.duration.count()));
+    Json object;
+    object["run_id"] = metadata.run_id;
+    object["config_path"] = metadata.config_path.generic_string();
+    object["target_path"] = metadata.target_path.generic_string();
+    object["project_root"] = metadata.project_root.generic_string();
+    object["report_dir"] = metadata.report_dir.generic_string();
+    object["started_at"] = metadata.started_at;
+    object["finished_at"] = metadata.finished_at;
+    object["duration_ms"] = metadata.duration.count();
 
-    std::vector<std::string> versions;
-    versions.reserve(metadata.tool_versions.size());
+    Json versions = Json::array();
     for (const auto& tool : metadata.tool_versions)
     {
-        ObjectBuilder entry;
-        entry.add("checker_id", jsonString(tool.checker_id));
-        entry.add("executable", jsonString(tool.executable));
-        entry.add("version", jsonString(tool.version));
-        versions.push_back(entry.build());
+        Json entry;
+        entry["checker_id"] = tool.checker_id;
+        entry["executable"] = tool.executable;
+        entry["version"] = tool.version;
+        versions.push_back(std::move(entry));
     }
-    b.add("tool_versions", arrayOf(versions));
-    return b.build();
+    object["tool_versions"] = std::move(versions);
+    return object;
 }
 
 } // namespace
 
 std::string serializeRunReportJson(const RunReport& report)
 {
-    std::ostringstream oss;
-    oss << '{';
-    oss << "\"schema_version\":" << report.schema_version;
-    oss << ",\"exit_code\":" << report.exit_code;
-    oss << ",\"metadata\":" << metadataJson(report.metadata);
+    Json document;
+    document["schema_version"] = report.schema_version;
+    document["exit_code"] = report.exit_code;
+    document["metadata"] = metadataJson(report.metadata);
 
-    oss << ",\"checkers\":[";
-    for (std::size_t i = 0; i < report.checkers.size(); ++i)
+    Json checkers = Json::array();
+    for (const auto& checker : report.checkers)
     {
-        const auto& checker = report.checkers[i];
-        if (i > 0)
-        {
-            oss << ',';
-        }
-        ObjectBuilder c;
-        c.add("id", jsonString(checker.checker_id));
-        c.add("kind", jsonString(checker.checker_kind));
-        c.add("status", jsonString(toString(checker.status)));
-        c.add("exit_code", optionalInt(checker.exit_code));
-        c.add("duration_ms", number(checker.duration.count()));
-        c.add("message", jsonString(checker.message));
-        c.add("stdout_log", quotedPath(checker.stdout_log));
-        c.add("stderr_log", quotedPath(checker.stderr_log));
+        Json item;
+        item["id"] = checker.checker_id;
+        item["kind"] = checker.checker_kind;
+        item["status"] = toString(checker.status);
+        item["exit_code"] = optionalInt(checker.exit_code);
+        item["duration_ms"] = checker.duration.count();
+        item["message"] = checker.message;
+        item["stdout_log"] = checker.stdout_log.generic_string();
+        item["stderr_log"] = checker.stderr_log.generic_string();
 
-        std::vector<std::string> artifacts;
-        artifacts.reserve(checker.artifacts.size());
+        Json artifacts = Json::array();
         for (const auto& artifact : checker.artifacts)
         {
-            artifacts.push_back(quotedPath(artifact));
+            artifacts.push_back(artifact.generic_string());
         }
-        c.add("artifacts", arrayOf(artifacts));
+        item["artifacts"] = std::move(artifacts);
 
-        std::vector<std::string> diagnostics;
-        diagnostics.reserve(checker.diagnostics.size());
-        for (const auto& diag : checker.diagnostics)
+        Json diagnostics = Json::array();
+        for (const auto& diagnostic : checker.diagnostics)
         {
-            ObjectBuilder d;
-            d.add("file", quotedPath(diag.file));
-            d.add("line", optionalNumber(diag.line));
-            d.add("column", optionalNumber(diag.column));
-            d.add("severity", jsonString(toString(diag.severity)));
-            d.add("message", jsonString(diag.message));
-            d.add("rule", jsonString(diag.rule));
-            diagnostics.push_back(d.build());
+            Json entry;
+            entry["file"] = diagnostic.file.generic_string();
+            entry["line"] = optionalNumber(diagnostic.line);
+            entry["column"] = optionalNumber(diagnostic.column);
+            entry["severity"] = toString(diagnostic.severity);
+            entry["message"] = diagnostic.message;
+            entry["rule"] = diagnostic.rule;
+            diagnostics.push_back(std::move(entry));
         }
-        c.add("diagnostics", arrayOf(diagnostics));
-        oss << c.build();
+        item["diagnostics"] = std::move(diagnostics);
+
+        checkers.push_back(std::move(item));
     }
-    oss << ']';
-    oss << '}';
-    return oss.str();
+    document["checkers"] = std::move(checkers);
+    return document.dump();
 }
 
 std::string serializeUnifiedReportJson(const UnifiedReport& report)
 {
-    std::ostringstream oss;
-    oss << '{';
-    oss << "\"schema_version\":" << report.schema_version;
-    oss << ",\"exit_code\":" << report.exit_code;
+    Json document;
+    document["schema_version"] = report.schema_version;
+    document["exit_code"] = report.exit_code;
 
-    ObjectBuilder tool;
-    tool.add("name", jsonString("CppSentinel"));
-    tool.add("layer", jsonString("unified-findings"));
-    oss << ",\"tool\":" << tool.build();
-    oss << ",\"metadata\":" << metadataJson(report.metadata);
+    Json tool;
+    tool["name"] = "CppSentinel";
+    tool["layer"] = "unified-findings";
+    document["tool"] = std::move(tool);
+    document["metadata"] = metadataJson(report.metadata);
 
-    // ---- summary ----
-    ObjectBuilder summary;
-    summary.add("total_findings",
-                number(static_cast<long long>(report.summary.total_findings)));
-    summary.add("raw_diagnostics",
-                number(static_cast<long long>(report.summary.raw_diagnostics)));
-    summary.add("deduplicated",
-                number(static_cast<long long>(report.summary.deduplicated)));
-    summary.add("attached_notes",
-                number(static_cast<long long>(report.summary.attached_notes)));
-    summary.add("tool_notices",
-                number(static_cast<long long>(report.summary.tool_notices)));
-    summary.add("suppressed",
-                number(static_cast<long long>(report.summary.suppressed)));
-    summary.add("affected_files",
-                number(static_cast<long long>(report.summary.affected_files)));
-    summary.add("by_severity", severityCountsJson(report.summary.severity));
+    Json summary;
+    summary["total_findings"] = report.summary.total_findings;
+    summary["raw_diagnostics"] = report.summary.raw_diagnostics;
+    summary["deduplicated"] = report.summary.deduplicated;
+    summary["attached_notes"] = report.summary.attached_notes;
+    summary["tool_notices"] = report.summary.tool_notices;
+    summary["suppressed"] = report.summary.suppressed;
+    summary["affected_files"] = report.summary.affected_files;
+    summary["by_severity"] = severityCountsJson(report.summary.severity);
 
-    std::vector<std::string> categories;
-    categories.reserve(report.summary.categories.size());
+    Json categories = Json::array();
     for (const auto& category : report.summary.categories)
     {
-        ObjectBuilder c;
-        c.add("category", jsonString(category.category));
-        c.add("count", number(static_cast<long long>(category.count)));
-        categories.push_back(c.build());
+        Json entry;
+        entry["category"] = category.category;
+        entry["count"] = category.count;
+        categories.push_back(std::move(entry));
     }
-    summary.add("by_category", arrayOf(categories));
+    summary["by_category"] = std::move(categories);
 
-    std::vector<std::string> files;
-    files.reserve(report.summary.files.size());
+    Json files = Json::array();
     for (const auto& file : report.summary.files)
     {
-        ObjectBuilder f;
-        f.add("path", quotedPath(file.file));
-        f.add("counts", severityCountsJson(file.counts));
-        files.push_back(f.build());
+        Json entry;
+        entry["path"] = file.file.generic_string();
+        entry["counts"] = severityCountsJson(file.counts);
+        files.push_back(std::move(entry));
     }
-    summary.add("files", arrayOf(files));
+    summary["files"] = std::move(files);
 
-    std::vector<std::string> rules;
-    rules.reserve(report.summary.rules.size());
+    Json rules = Json::array();
     for (const auto& rule : report.summary.rules)
     {
-        ObjectBuilder r;
-        r.add("rule", jsonString(rule.rule));
-        r.add("category", jsonString(rule.category));
-        r.add("severity", jsonString(toString(rule.severity)));
-        r.add("count", number(static_cast<long long>(rule.count)));
-        rules.push_back(r.build());
+        Json entry;
+        entry["rule"] = rule.rule;
+        entry["category"] = rule.category;
+        entry["severity"] = toString(rule.severity);
+        entry["count"] = rule.count;
+        rules.push_back(std::move(entry));
     }
-    summary.add("rules", arrayOf(rules));
+    summary["rules"] = std::move(rules);
 
-    std::vector<std::string> checkers;
-    checkers.reserve(report.checkers.size());
+    Json checkers = Json::array();
     for (const auto& checker : report.checkers)
     {
-        ObjectBuilder c;
-        c.add("id", jsonString(checker.id));
-        c.add("kind", jsonString(checker.kind));
-        c.add("status", jsonString(toString(checker.status)));
-        c.add("exit_code", optionalInt(checker.exit_code));
-        c.add("duration_ms", number(checker.duration.count()));
-        c.add("raw_diagnostics",
-              number(static_cast<long long>(checker.raw_diagnostics)));
-        c.add("message", jsonString(checker.message));
-        c.add("stdout_log", quotedPath(checker.stdout_log));
-        c.add("stderr_log", quotedPath(checker.stderr_log));
-        checkers.push_back(c.build());
+        Json entry;
+        entry["id"] = checker.id;
+        entry["kind"] = checker.kind;
+        entry["status"] = toString(checker.status);
+        entry["exit_code"] = optionalInt(checker.exit_code);
+        entry["duration_ms"] = checker.duration.count();
+        entry["raw_diagnostics"] = checker.raw_diagnostics;
+        entry["message"] = checker.message;
+        entry["stdout_log"] = checker.stdout_log.generic_string();
+        entry["stderr_log"] = checker.stderr_log.generic_string();
+        checkers.push_back(std::move(entry));
     }
-    summary.add("checkers", arrayOf(checkers));
-    oss << ",\"summary\":" << summary.build();
-    // ---- findings ----
-    std::vector<std::string> findings;
-    findings.reserve(report.findings.size());
+    summary["checkers"] = std::move(checkers);
+    document["summary"] = std::move(summary);
+
+    Json findings = Json::array();
     for (const auto& finding : report.findings)
     {
-        ObjectBuilder f;
-        f.add("id", jsonString(finding.id));
-        f.add("file", quotedPath(finding.file));
-        f.add("line", optionalNumber(finding.line));
-        f.add("column", optionalNumber(finding.column));
-        f.add("severity", jsonString(toString(finding.severity)));
-        f.add("category", jsonString(finding.category));
-        f.add("rule", jsonString(finding.rule));
-        f.add("message", jsonString(finding.message));
-        f.add("tools", stringArray(finding.tools));
-        f.add("notes", stringArray(finding.related_notes));
-        f.add("occurrences", number(static_cast<long long>(finding.occurrences)));
+        Json entry;
+        entry["id"] = finding.id;
+        entry["file"] = finding.file.generic_string();
+        entry["line"] = optionalNumber(finding.line);
+        entry["column"] = optionalNumber(finding.column);
+        entry["severity"] = toString(finding.severity);
+        entry["category"] = finding.category;
+        entry["rule"] = finding.rule;
+        entry["message"] = finding.message;
         if (!finding.snippet.empty())
         {
-            f.add("snippet", jsonString(finding.snippet));
+            entry["snippet"] = finding.snippet;
         }
+        entry["tools"] = stringArray(finding.tools);
+        entry["notes"] = stringArray(finding.related_notes);
+        entry["occurrences"] = finding.occurrences;
         if (finding.baseline != BaselineStatus::NotCompared)
         {
-            f.add("baseline", jsonString(toString(finding.baseline)));
+            entry["baseline"] = toString(finding.baseline);
         }
+
         if (!finding.fixes.empty())
         {
-            std::vector<std::string> fixes;
-            fixes.reserve(finding.fixes.size());
+            Json fixes = Json::array();
             for (const auto& fix : finding.fixes)
             {
-                ObjectBuilder fixObject;
-                fixObject.add("description", jsonString(fix.description));
-                std::vector<std::string> replacements;
-                replacements.reserve(fix.replacements.size());
+                Json fixEntry;
+                fixEntry["description"] = fix.description;
+                Json replacements = Json::array();
                 for (const auto& replacement : fix.replacements)
                 {
-                    ObjectBuilder r;
-                    r.add("file", quotedPath(replacement.file));
-                    r.add("offset",
-                          number(static_cast<long long>(replacement.offset)));
-                    r.add("length",
-                          number(static_cast<long long>(replacement.length)));
-                    r.add("text", jsonString(replacement.text));
-                    replacements.push_back(r.build());
+                    Json replacementEntry;
+                    replacementEntry["file"] =
+                        replacement.file.generic_string();
+                    replacementEntry["offset"] = replacement.offset;
+                    replacementEntry["length"] = replacement.length;
+                    replacementEntry["text"] = replacement.text;
+                    replacements.push_back(std::move(replacementEntry));
                 }
-                fixObject.add("replacements", arrayOf(replacements));
-                fixes.push_back(fixObject.build());
+                fixEntry["replacements"] = std::move(replacements);
+                fixes.push_back(std::move(fixEntry));
             }
-            f.add("fixes", arrayOf(fixes));
+            entry["fixes"] = std::move(fixes);
         }
-        findings.push_back(f.build());
-    }
-    oss << ",\"findings\":" << arrayOf(findings);
 
-    // ---- suppressed (dropped by filters, kept for transparency) ----
-    std::vector<std::string> suppressed;
-    suppressed.reserve(report.suppressed.size());
+        findings.push_back(std::move(entry));
+    }
+    document["findings"] = std::move(findings);
+
+    Json suppressed = Json::array();
     for (const auto& item : report.suppressed)
     {
-        ObjectBuilder s;
-        s.add("id", jsonString(item.id));
-        s.add("file", quotedPath(item.file));
-        s.add("line", optionalNumber(item.line));
-        s.add("rule", jsonString(item.rule));
-        s.add("reason", jsonString(item.reason));
-        suppressed.push_back(s.build());
+        Json entry;
+        entry["id"] = item.id;
+        entry["file"] = item.file.generic_string();
+        entry["line"] = optionalNumber(item.line);
+        entry["rule"] = item.rule;
+        entry["reason"] = item.reason;
+        suppressed.push_back(std::move(entry));
     }
-    oss << ",\"suppressed\":" << arrayOf(suppressed);
+    document["suppressed"] = std::move(suppressed);
 
-    // ---- baseline comparison ----
     if (report.baseline.enabled)
     {
-        ObjectBuilder b;
-        b.add("path", quotedPath(report.baseline.path));
-        b.add("new", number(static_cast<long long>(report.baseline.new_findings)));
-        b.add("known",
-              number(static_cast<long long>(report.baseline.known_findings)));
-        b.add("fixed",
-              number(static_cast<long long>(report.baseline.fixed_findings)));
-        std::vector<std::string> fixedEntries;
-        fixedEntries.reserve(report.baseline.fixed.size());
+        Json baseline;
+        baseline["path"] = report.baseline.path.generic_string();
+        baseline["new"] = report.baseline.new_findings;
+        baseline["known"] = report.baseline.known_findings;
+        baseline["fixed"] = report.baseline.fixed_findings;
+
+        Json fixedEntries = Json::array();
         for (const auto& entry : report.baseline.fixed)
         {
-            ObjectBuilder entryObject;
-            entryObject.add("id", jsonString(entry.id));
-            entryObject.add("rule", jsonString(entry.rule));
-            entryObject.add("file", quotedPath(entry.file));
-            entryObject.add("line", optionalNumber(entry.line));
-            fixedEntries.push_back(entryObject.build());
+            Json item;
+            item["id"] = entry.id;
+            item["rule"] = entry.rule;
+            item["file"] = entry.file.generic_string();
+            item["line"] = optionalNumber(entry.line);
+            fixedEntries.push_back(std::move(item));
         }
-        b.add("fixed_findings", arrayOf(fixedEntries));
-        oss << ",\"baseline\":" << b.build();
+        baseline["fixed_findings"] = std::move(fixedEntries);
+        document["baseline"] = std::move(baseline);
     }
 
-    oss << ",\"notes\":" << stringArray(report.notes);
-    oss << '}';
-    return oss.str();
+    document["notes"] = stringArray(report.notes);
+    return document.dump(2) + "\n";
 }
 
 } // namespace cppsentinel

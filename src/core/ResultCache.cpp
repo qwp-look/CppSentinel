@@ -1,14 +1,16 @@
 // Per-checker result cache (see ResultCache.h).
+// JSON is handled by nlohmann/json (third_party/nlohmann).
 
 #include "cppsentinel/core/ResultCache.h"
 
-#include "cppsentinel/report/JsonUtil.h"
 #include "cppsentinel/util/FileIo.h"
-#include "cppsentinel/util/Json.h"
+
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <exception>
 #include <string>
 #include <system_error>
 #include <vector>
@@ -19,6 +21,7 @@ namespace
 {
 
 namespace fs = std::filesystem;
+using Json = nlohmann::json;
 
 std::uint64_t fnv1a64(std::string_view text) noexcept
 {
@@ -39,11 +42,6 @@ std::string hex(std::uint64_t value)
     return std::string(buffer);
 }
 
-std::string jsonString(std::string_view value)
-{
-    return '"' + json::escape(value) + '"';
-}
-
 bool skipDirectoryName(const std::string& name)
 {
     return name == ".git" || name == "node_modules" || name == "report" ||
@@ -51,9 +49,69 @@ bool skipDirectoryName(const std::string& name)
            (!name.empty() && name.front() == '.');
 }
 
-std::string roleName(DiagnosticRole role)
+bool isSourceExtension(const std::string& extension)
 {
-    return role == DiagnosticRole::Note ? "note" : "primary";
+    static const char* kExtensions[] = {".h",   ".hpp", ".hh",  ".hxx", ".c",
+                                        ".cc",  ".cpp", ".cxx", ".ipp", ".inl",
+                                        ".tcc", ".m",   ".mm"};
+    for (const char* candidate : kExtensions)
+    {
+        if (extension == candidate)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+Severity severityFromName(const std::string& name)
+{
+    if (name == "error")
+    {
+        return Severity::Error;
+    }
+    if (name == "warning")
+    {
+        return Severity::Warning;
+    }
+    if (name == "style")
+    {
+        return Severity::Style;
+    }
+    if (name == "information")
+    {
+        return Severity::Information;
+    }
+    return Severity::Unknown;
+}
+
+CheckerStatus statusFromName(const std::string& name)
+{
+    if (name == "succeeded")
+    {
+        return CheckerStatus::Succeeded;
+    }
+    if (name == "failed")
+    {
+        return CheckerStatus::Failed;
+    }
+    if (name == "timed_out")
+    {
+        return CheckerStatus::TimedOut;
+    }
+    if (name == "start_error")
+    {
+        return CheckerStatus::StartError;
+    }
+    if (name == "tool_error")
+    {
+        return CheckerStatus::ToolError;
+    }
+    if (name == "config_error")
+    {
+        return CheckerStatus::ConfigError;
+    }
+    return CheckerStatus::Skipped;
 }
 
 } // namespace
@@ -97,26 +155,22 @@ std::string projectFingerprint(const fs::path& root)
             continue;
         }
 
-        if (it->is_regular_file(ec))
+        if (it->is_regular_file(ec) &&
+            isSourceExtension(path.extension().string()))
         {
-            const std::string extension = path.extension().string();
-            if (extension == ".h" || extension == ".hpp" || extension == ".hh" ||
-                extension == ".hxx" || extension == ".c" || extension == ".cc" ||
-                extension == ".cpp" || extension == ".cxx" || extension == ".ipp" ||
-                extension == ".inl" || extension == ".tcc" || extension == ".m" ||
-                extension == ".mm")
-            {
-                const auto size = it->file_size(ec);
-                const auto writeTime = it->last_write_time(ec);
-                std::string entry = path.generic_string();
-                entry += '|';
-                entry += std::to_string(ec ? 0 : static_cast<long long>(size));
-                entry += '|';
-                entry += std::to_string(
-                    ec ? 0
-                       : static_cast<long long>(writeTime.time_since_epoch().count()));
-                entries.push_back(std::move(entry));
-            }
+            const auto size = it->file_size(ec);
+            const long long sizeValue = ec ? 0 : static_cast<long long>(size);
+            const auto writeTime = it->last_write_time(ec);
+            const long long stampValue =
+                ec ? 0
+                   : static_cast<long long>(writeTime.time_since_epoch().count());
+
+            std::string entry = path.generic_string();
+            entry.push_back('|');
+            entry += std::to_string(sizeValue);
+            entry.push_back('|');
+            entry += std::to_string(stampValue);
+            entries.push_back(std::move(entry));
         }
 
         it.increment(ec);
@@ -186,102 +240,64 @@ std::optional<CheckerResult> ResultCache::load(const std::string& key) const
         return std::nullopt;
     }
 
-    std::string parseError;
-    auto root = json::parse(*text, parseError);
-    if (!root)
+    const auto document = Json::parse(*text, nullptr, false);
+    if (document.is_discarded() || !document.is_object())
     {
         return std::nullopt;
     }
 
     CheckerResult result;
-    result.checker_id = root->stringOr("checker_id");
-    result.checker_kind = root->stringOr("checker_kind");
-    result.message = root->stringOr("message");
-    result.duration = std::chrono::milliseconds(root->numberOr("duration_ms", 0));
+    try
+    {
+        result.checker_id = document.value("checker_id", std::string{});
+        result.checker_kind = document.value("checker_kind", std::string{});
+        result.message = document.value("message", std::string{});
+        result.duration =
+            std::chrono::milliseconds(document.value("duration_ms", 0LL));
+        result.status = statusFromName(document.value("status", std::string{}));
 
-    const long long exitCode = root->numberOr("exit_code", -1);
-    if (exitCode >= 0)
-    {
-        result.exit_code = static_cast<int>(exitCode);
-    }
-
-    const std::string status = root->stringOr("status");
-    if (status == "succeeded")
-    {
-        result.status = CheckerStatus::Succeeded;
-    }
-    else if (status == "failed")
-    {
-        result.status = CheckerStatus::Failed;
-    }
-    else if (status == "timed_out")
-    {
-        result.status = CheckerStatus::TimedOut;
-    }
-    else if (status == "start_error")
-    {
-        result.status = CheckerStatus::StartError;
-    }
-    else if (status == "tool_error")
-    {
-        result.status = CheckerStatus::ToolError;
-    }
-    else if (status == "config_error")
-    {
-        result.status = CheckerStatus::ConfigError;
-    }
-    else if (status == "skipped")
-    {
-        result.status = CheckerStatus::Skipped;
-    }
-
-    if (const auto* diagnostics = root->arrayOr("diagnostics"))
-    {
-        result.diagnostics.reserve(diagnostics->size());
-        for (const auto& item : *diagnostics)
+        const long long exitCode = document.value("exit_code", -1LL);
+        if (exitCode >= 0)
         {
-            Diagnostic diagnostic;
-            diagnostic.file = item.stringOr("file");
-            const long long line = item.numberOr("line", 0);
-            if (line > 0)
-            {
-                diagnostic.line = static_cast<std::uint32_t>(line);
-            }
-            const long long column = item.numberOr("column", 0);
-            if (column > 0)
-            {
-                diagnostic.column = static_cast<std::uint32_t>(column);
-            }
-            diagnostic.message = item.stringOr("message");
-            diagnostic.rule = item.stringOr("rule");
-            diagnostic.role = item.stringOr("role") == "note"
-                                  ? DiagnosticRole::Note
-                                  : DiagnosticRole::Primary;
-
-            const std::string severity = item.stringOr("severity");
-            if (severity == "error")
-            {
-                diagnostic.severity = Severity::Error;
-            }
-            else if (severity == "warning")
-            {
-                diagnostic.severity = Severity::Warning;
-            }
-            else if (severity == "style")
-            {
-                diagnostic.severity = Severity::Style;
-            }
-            else if (severity == "information")
-            {
-                diagnostic.severity = Severity::Information;
-            }
-            else
-            {
-                diagnostic.severity = Severity::Unknown;
-            }
-
-            result.diagnostics.push_back(std::move(diagnostic));
+            result.exit_code = static_cast<int>(exitCode);
         }
+
+        const auto diagnostics = document.find("diagnostics");
+        if (diagnostics != document.end() && diagnostics->is_array())
+        {
+            result.diagnostics.reserve(diagnostics->size());
+            for (const auto& item : *diagnostics)
+            {
+                if (!item.is_object())
+                {
+                    continue;
+                }
+                Diagnostic diagnostic;
+                diagnostic.file = item.value("file", std::string{});
+                const long long line = item.value("line", 0LL);
+                if (line > 0)
+                {
+                    diagnostic.line = static_cast<std::uint32_t>(line);
+                }
+                const long long column = item.value("column", 0LL);
+                if (column > 0)
+                {
+                    diagnostic.column = static_cast<std::uint32_t>(column);
+                }
+                diagnostic.severity =
+                    severityFromName(item.value("severity", std::string{}));
+                diagnostic.rule = item.value("rule", std::string{});
+                diagnostic.message = item.value("message", std::string{});
+                diagnostic.role = item.value("role", std::string{}) == "note"
+                                      ? DiagnosticRole::Note
+                                      : DiagnosticRole::Primary;
+                result.diagnostics.push_back(std::move(diagnostic));
+            }
+        }
+    }
+    catch (const std::exception&)
+    {
+        return std::nullopt;
     }
 
     return result;
@@ -301,36 +317,29 @@ void ResultCache::store(const std::string& key, const CheckerResult& result) con
         return;
     }
 
-    std::string out = "{\"checker_id\":" + jsonString(result.checker_id);
-    out += ",\"checker_kind\":" + jsonString(result.checker_kind);
-    out += ",\"status\":" + jsonString(toString(result.status));
-    out += ",\"exit_code\":";
-    out += result.exit_code ? std::to_string(*result.exit_code) : "-1";
-    out += ",\"duration_ms\":" + std::to_string(result.duration.count());
-    out += ",\"message\":" + jsonString(result.message);
-    out += ",\"diagnostics\":[";
-    for (std::size_t i = 0; i < result.diagnostics.size(); ++i)
+    Json document;
+    document["checker_id"] = result.checker_id;
+    document["checker_kind"] = result.checker_kind;
+    document["status"] = toString(result.status);
+    document["exit_code"] = result.exit_code ? *result.exit_code : -1;
+    document["duration_ms"] = result.duration.count();
+    document["message"] = result.message;
+    document["diagnostics"] = Json::array();
+    for (const auto& diagnostic : result.diagnostics)
     {
-        const auto& diagnostic = result.diagnostics[i];
-        if (i > 0)
-        {
-            out.push_back(',');
-        }
-        out += "{\"file\":" + jsonString(diagnostic.file.generic_string());
-        out += ",\"line\":" +
-               std::to_string(diagnostic.line ? *diagnostic.line : 0);
-        out += ",\"column\":" +
-               std::to_string(diagnostic.column ? *diagnostic.column : 0);
-        out += ",\"severity\":" + jsonString(toString(diagnostic.severity));
-        out += ",\"rule\":" + jsonString(diagnostic.rule);
-        out += ",\"message\":" + jsonString(diagnostic.message);
-        out += ",\"role\":" + jsonString(roleName(diagnostic.role));
-        out += '}';
+        document["diagnostics"].push_back(
+            Json{{"file", diagnostic.file.generic_string()},
+                 {"line", diagnostic.line ? *diagnostic.line : 0u},
+                 {"column", diagnostic.column ? *diagnostic.column : 0u},
+                 {"severity", toString(diagnostic.severity)},
+                 {"rule", diagnostic.rule},
+                 {"message", diagnostic.message},
+                 {"role", diagnostic.role == DiagnosticRole::Note ? "note"
+                                                                  : "primary"}});
     }
-    out += "]}";
 
     std::string writeError;
-    writeTextFile(directory_ / (key + ".json"), out, writeError);
+    writeTextFile(directory_ / (key + ".json"), document.dump(), writeError);
 }
 
 } // namespace cppsentinel

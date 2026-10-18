@@ -1,12 +1,13 @@
 // Baseline file format + comparison (see Baseline.h).
+// JSON is handled by nlohmann/json (third_party/nlohmann).
 
 #include "cppsentinel/report/Baseline.h"
 
 #include "cppsentinel/util/FileIo.h"
-#include "cppsentinel/report/JsonUtil.h"
-#include "cppsentinel/util/Json.h"
 
-#include <set>
+#include <nlohmann/json.hpp>
+
+#include <exception>
 #include <string>
 #include <unordered_map>
 
@@ -15,10 +16,7 @@ namespace cppsentinel
 namespace
 {
 
-std::string jsonString(std::string_view value)
-{
-    return '"' + json::escape(value) + '"';
-}
+using Json = nlohmann::json;
 
 /// Key that ignores the line number: a finding that moved lines is still known.
 std::string contentKey(std::string_view rule, std::string_view file,
@@ -57,25 +55,20 @@ BaselineData baselineFromReport(const UnifiedReport& report)
 
 std::string serializeBaseline(const BaselineData& baseline)
 {
-    std::string out = "{\"version\":" + std::to_string(baseline.version);
-    out += ",\"generated_at\":" + jsonString(baseline.generated_at);
-    out += ",\"findings\":[";
-    for (std::size_t i = 0; i < baseline.findings.size(); ++i)
+    Json document;
+    document["version"] = baseline.version;
+    document["generated_at"] = baseline.generated_at;
+    document["findings"] = Json::array();
+    for (const auto& entry : baseline.findings)
     {
-        const auto& entry = baseline.findings[i];
-        if (i > 0)
-        {
-            out.push_back(',');
-        }
-        out += "{\"id\":" + jsonString(entry.id);
-        out += ",\"rule\":" + jsonString(entry.rule);
-        out += ",\"file\":" + jsonString(entry.file);
-        out += ",\"line\":" + std::to_string(entry.line);
-        out += ",\"message\":" + jsonString(entry.message);
-        out.push_back('}');
+        document["findings"].push_back(Json{{"id", entry.id},
+                                            {"rule", entry.rule},
+                                            {"file", entry.file},
+                                            {"line", entry.line},
+                                            {"message", entry.message}});
     }
-    out += "]}";
-    return out;
+    // Pretty-printed: the baseline is committed and reviewed in diffs.
+    return document.dump(2) + "\n";
 }
 
 bool loadBaseline(const std::filesystem::path& path, BaselineData& baseline,
@@ -89,33 +82,47 @@ bool loadBaseline(const std::filesystem::path& path, BaselineData& baseline,
         return false;
     }
 
-    std::string parseError;
-    auto root = json::parse(*text, parseError);
-    if (!root)
+    const auto document = Json::parse(*text, nullptr, false);
+    if (document.is_discarded() || !document.is_object())
     {
-        errorMessage = "baseline '" + path.string() + "' is not valid JSON: " +
-                       parseError;
+        errorMessage =
+            "baseline '" + path.string() + "' is not a JSON object";
         return false;
     }
 
-    baseline.version = static_cast<std::uint32_t>(root->numberOr("version", 1));
-    baseline.generated_at = root->stringOr("generated_at");
-    baseline.findings.clear();
-
-    if (const auto* entries = root->arrayOr("findings"))
+    try
     {
-        baseline.findings.reserve(entries->size());
-        for (const auto& item : *entries)
+        baseline.version = document.value("version", 1u);
+        baseline.generated_at = document.value("generated_at", std::string{});
+        baseline.findings.clear();
+
+        const auto entries = document.find("findings");
+        if (entries != document.end() && entries->is_array())
         {
-            BaselineEntry entry;
-            entry.id = item.stringOr("id");
-            entry.rule = item.stringOr("rule");
-            entry.file = item.stringOr("file");
-            entry.line = item.numberOr("line", 0);
-            entry.message = item.stringOr("message");
-            baseline.findings.push_back(std::move(entry));
+            baseline.findings.reserve(entries->size());
+            for (const auto& item : *entries)
+            {
+                if (!item.is_object())
+                {
+                    continue;
+                }
+                BaselineEntry entry;
+                entry.id = item.value("id", std::string{});
+                entry.rule = item.value("rule", std::string{});
+                entry.file = item.value("file", std::string{});
+                entry.line = item.value("line", 0LL);
+                entry.message = item.value("message", std::string{});
+                baseline.findings.push_back(std::move(entry));
+            }
         }
     }
+    catch (const std::exception& ex)
+    {
+        errorMessage = "baseline '" + path.string() + "' has an invalid field: " +
+                       ex.what();
+        return false;
+    }
+
     return true;
 }
 

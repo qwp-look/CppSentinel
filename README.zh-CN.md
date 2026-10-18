@@ -209,7 +209,8 @@ Configuration/                默认 Configuration.toml
 tests/                        单元与集成测试（CTest）
 docs/                         架构 / 配置 / Boost 说明
 scripts/vendor_boost.ps1      bcp 刷新脚本
-third_party/toml.hpp          toml++
+third_party/toml.hpp          toml++（TOML 配置）
+third_party/nlohmann/         nlohmann/json（基线、缓存、报告）
 third_party/boost/            bcp 抽出的 Boost.Process
 report/                       运行产物（内容已 gitignore）
 ```

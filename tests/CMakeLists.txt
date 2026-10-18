@@ -9,7 +9,6 @@ set(CPPSENTINEL_TEST_SOURCES
     unit/test_findings.cpp
     unit/test_filter.cpp
     unit/test_baseline.cpp
-    unit/test_json_parser.cpp
     unit/test_fix_parser.cpp
     unit/test_targets.cpp
     unit/test_cache.cpp
