@@ -46,6 +46,7 @@ add_library(cppsentinel_core STATIC
     src/core/CheckerRegistry.cpp
     src/core/BuiltinTools.cpp
     src/core/TargetEnumerator.cpp
+    src/core/ResultCache.cpp
     src/core/ToolProbe.cpp
     src/core/Doctor.cpp
     src/core/Engine.cpp

@@ -47,6 +47,7 @@ CppSentinel run --config <Configuration.toml> --target <file-or-dir>
 | `--baseline` | 基线文件；只把不在基线里的 finding 视为新问题 |
 | `--update-baseline` | 用本次结果重写基线（退出码只看工具是否正常）|
 | `--jobs` | 并行运行的 checker 数量（1..16） |
+| `--cache` | 项目未变化时复用上次结果 |
 
 子命令：`run`（审计）、`doctor`（环境自检）、`init`（生成配置模板）。
 
@@ -104,6 +105,23 @@ clang-tidy、clang-format、compiler-diagnostics、cppcheck 面对完全相同�
 `[run].max_parallel`（1..16）决定同时运行几个 checker。报告顺序始终按 `[[checker]]`
 声明顺序，保证可复现。
 
+## 缓存
+
+`--cache`（或 `[run].cache = true`）在项目未变化时复用上次的 checker 结果。缓存键包含
+checker 选项、工具版本，以及项目根下所有 C/C++ 文件的指纹（路径、大小、mtime），
+因此升级工具或改动源码都会失效。只有诊断结果被缓存——报告里会标注 `(cached)`，
+不会假装上次的日志还存在。
+
+本仓库实测（`./src/util`，4 个 checker）：冷启动 4.4 秒，命中缓存 260 毫秒。
+
+## CI
+
+`.github/workflows/ci.yml` 在构建后运行 `self-audit`：先 `doctor` 自检，再用
+`Configuration/Configuration.ci.toml`（native 环境、`fail_on = "error"`、
+`ignore_outside_project = true` 避免标准库头文件告警阻断构建）跑全量审计，
+最后上传 `report.md` / `report.sarif` / `report.json`。若要按"回归"而非"绝对状态"
+卡门，提交基线并启用 `fail_on_new`。
+
 ## 过滤与基线
 
 不是每条问题都值得处理。过滤器会显式丢弃并记录原因，而不是悄悄隐藏：
@@ -114,6 +132,7 @@ ignore_rules = ["modernize-*"]        # 按规则 id 匹配（glob）
 ignore_paths = ["third_party/**"]     # 按项目相对路径匹配
 ignore_messages = ["is too short"]    # 消息子串，忽略大小写
 min_severity = "warning"              # 丢弃 style/information
+ignore_outside_project = true         # 丢弃系统/工具链头文件
 inline_suppressions = true
 ```
 

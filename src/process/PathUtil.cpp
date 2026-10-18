@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 
 namespace cppsentinel
 {
@@ -111,6 +112,78 @@ std::filesystem::path resolveAgainst(const std::filesystem::path& baseDir,
         return maybeRelative.lexically_normal();
     }
     return (baseDir / maybeRelative).lexically_normal();
+}
+
+std::filesystem::path resolveExecutablePath(std::string_view name)
+{
+    if (name.empty())
+    {
+        return {};
+    }
+
+    const std::string text(name);
+    // Explicit path (absolute, contains a separator, or a drive prefix).
+    if (text.find('/') != std::string::npos ||
+        text.find('\\') != std::string::npos ||
+        (text.size() > 1 && text[1] == ':'))
+    {
+        return std::filesystem::path(text);
+    }
+
+    const char* pathEnv = std::getenv("PATH");
+    if (pathEnv == nullptr)
+    {
+        return std::filesystem::path(text);
+    }
+
+    std::string pathValue(pathEnv);
+    // Windows PATH uses ';'; MSYS shells export a ':' separated list.
+    const char separator =
+        pathValue.find(';') != std::string::npos ? ';' : ':';
+
+    static const char* kExtensions[] = {"", ".exe", ".cmd", ".bat", ".com"};
+
+    std::size_t start = 0;
+    while (start <= pathValue.size())
+    {
+        auto end = pathValue.find(separator, start);
+        if (end == std::string::npos)
+        {
+            end = pathValue.size();
+        }
+        std::string directory = pathValue.substr(start, end - start);
+        start = end + 1;
+
+        if (directory.empty())
+        {
+            continue;
+        }
+
+        // Convert MSYS-style "/c/foo" entries to "C:/foo".
+        if (directory.size() >= 3 && directory[0] == '/' &&
+            std::isalpha(static_cast<unsigned char>(directory[1])) &&
+            directory[2] == '/')
+        {
+            std::string converted;
+            converted.push_back(directory[1]);
+            converted.push_back(':');
+            converted += directory.substr(2);
+            directory = std::move(converted);
+        }
+
+        for (const char* extension : kExtensions)
+        {
+            const std::filesystem::path candidate =
+                std::filesystem::path(directory) / (text + extension);
+            std::error_code ec;
+            if (std::filesystem::is_regular_file(candidate, ec) && !ec)
+            {
+                return candidate;
+            }
+        }
+    }
+
+    return std::filesystem::path(text);
 }
 
 } // namespace cppsentinel

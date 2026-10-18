@@ -183,3 +183,24 @@ TEST(inline_suppression_can_be_disabled)
     REQUIRE(report.summary.suppressed == 0);
     REQUIRE(report.findings.size() == 1);
 }
+
+TEST(outside_project_findings_can_be_dropped)
+{
+    FilterSettings settings;
+    settings.ignore_outside_project = true;
+    settings.inline_suppressions = false;
+
+    auto report = makeUnified({
+        makeFinding("C:/toolchain/include/c++/vector", 5, "clang-diagnostic-error",
+                    "system header issue"),
+        makeFinding("src/a.cpp", 1, "bugprone-x", "own code"),
+    });
+    REQUIRE(report.findings[0].file.is_absolute());
+
+    applyFilters(report, settings, filterRoot());
+
+    REQUIRE(report.summary.suppressed == 1);
+    REQUIRE(report.findings.size() == 1);
+    REQUIRE(report.findings[0].file.generic_string() == "src/a.cpp");
+    REQUIRE(report.suppressed[0].reason == "config:outside_project");
+}

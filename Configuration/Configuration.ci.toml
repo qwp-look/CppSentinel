@@ -1,0 +1,64 @@
+# CppSentinel configuration used by CI self-audit (see .github/workflows/ci.yml).
+#
+# Differences from Configuration.toml on purpose:
+#   * native environments - CI already has the tools on PATH, so no MSYS2 shell
+#     startup cost and no path translation involved.
+#   * fail_on = "error"    - warnings are reported and uploaded, but they do not
+#     gate the build while the codebase still carries style debt.
+#   * ignore_outside_project drops findings in system/toolchain headers, so a
+#     libstdc++ warning cannot fail the audit.
+#   * cache = true         - a re-run on an unchanged tree is near-instant.
+#
+# To gate on regressions instead of absolute state, commit a baseline and set:
+#   baseline = "../Configuration/baseline.json"
+#   fail_on_new = true
+
+schema_version = 2
+
+[project]
+root = ".."
+compilation_database = "../build/compile_commands.json"
+report_dir = "../report"
+
+[run]
+max_parallel = 4
+timeout_seconds = 300
+fail_on = "error"
+cache = true
+
+[filter]
+ignore_paths = ["third_party/**", "build*/**", "report/**"]
+ignore_rules = ["modernize-*", "readability-*", "portability-avoid-pragma-once"]
+# System and toolchain headers are not our code; keep the audit on this repo.
+ignore_outside_project = true
+inline_suppressions = true
+
+[environment.native]
+kind = "native"
+inherit_parent = true
+
+[[checker]]
+id = "clang-tidy"
+kind = "clang-tidy"
+environment = "native"
+checks = "clang-diagnostic-*,clang-analyzer-*,bugprone-*,cert-*,performance-*"
+header_filter = ".*"
+
+[[checker]]
+id = "clang-format"
+kind = "clang-format"
+environment = "native"
+style = "file"
+
+[[checker]]
+id = "compiler-diagnostics"
+kind = "compiler-diagnostics"
+environment = "native"
+compiler = "c++"
+
+[[checker]]
+id = "cppcheck"
+kind = "cppcheck"
+environment = "native"
+enable = "warning,performance,portability"
+std = "c++20"

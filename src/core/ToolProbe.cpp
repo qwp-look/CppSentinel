@@ -2,8 +2,11 @@
 
 #include "cppsentinel/core/ToolProbe.h"
 
+#include "cppsentinel/process/PathUtil.h"
 #include "cppsentinel/util/FileIo.h"
 
+#include <atomic>
+#include <chrono>
 #include <string>
 #include <string_view>
 
@@ -73,45 +76,65 @@ std::string probeToolVersion(const ProcessRunnerPtr& runner,
         return {};
     }
 
+    // The runner redirects stdio into files, so probes need somewhere to write
+    // even when the caller did not ask for logs.
+    std::filesystem::path stdoutPath;
+    std::filesystem::path stderrPath;
+    bool temporaryLogs = false;
+    if (logPath.empty())
+    {
+        static std::atomic<unsigned> counter{0};
+        const auto stamp =
+            std::chrono::steady_clock::now().time_since_epoch().count();
+        const auto stem = "cppsentinel-probe-" + std::to_string(stamp) + "-" +
+                          std::to_string(counter.fetch_add(1));
+        stdoutPath = std::filesystem::temp_directory_path() / (stem + ".out");
+        stderrPath = std::filesystem::temp_directory_path() / (stem + ".err");
+        temporaryLogs = true;
+    }
+    else
+    {
+        stdoutPath = logPath;
+        stdoutPath += ".stdout.log";
+        stderrPath = logPath;
+        stderrPath += ".stderr.log";
+    }
+
     ProcessRequest request;
-    request.executable = executable;
+    request.executable = resolveExecutablePath(executable);
     request.arguments = {"--version"};
     request.working_directory = workingDirectory;
     request.timeout = timeout;
-    if (!logPath.empty())
-    {
-        request.stdout_log = logPath;
-        request.stdout_log += ".stdout.log";
-        request.stderr_log = logPath;
-        request.stderr_log += ".stderr.log";
-    }
+    request.stdout_log = stdoutPath;
+    request.stderr_log = stderrPath;
 
     const auto result = runner->run(request);
-    if (result.state == ProcessState::StartError)
-    {
-        return {};
-    }
 
+    std::string version;
     std::string ignored;
-    if (!result.stdout_log.empty())
+    if (result.state != ProcessState::StartError)
     {
-        if (auto text = readTextFile(result.stdout_log, ignored))
+        if (auto text = readTextFile(stdoutPath, ignored))
         {
-            auto line = firstVersionLine(*text);
-            if (!line.empty())
+            version = firstVersionLine(*text);
+        }
+        if (version.empty())
+        {
+            if (auto text = readTextFile(stderrPath, ignored))
             {
-                return line;
+                version = firstVersionLine(*text);
             }
         }
     }
-    if (!result.stderr_log.empty())
+
+    if (temporaryLogs)
     {
-        if (auto text = readTextFile(result.stderr_log, ignored))
-        {
-            return firstVersionLine(*text);
-        }
+        std::error_code ec;
+        std::filesystem::remove(stdoutPath, ec);
+        std::filesystem::remove(stderrPath, ec);
     }
-    return {};
+
+    return version;
 }
 
 } // namespace cppsentinel

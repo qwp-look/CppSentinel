@@ -48,6 +48,7 @@ CppSentinel run --config <Configuration.toml> --target <file-or-dir>
 | `--baseline` | Baseline file; only findings absent from it count as new |
 | `--update-baseline` | Rewrite the baseline from this run |
 | `--jobs` | Number of checkers to run in parallel (1..16) |
+| `--cache` | Reuse results for an unchanged project tree |
 
 Subcommands: `run` (audit), `doctor` (environment checks), `init` (write a config template).
 
@@ -105,6 +106,26 @@ per file so a failure is attributable), and `[run].max_parallel` (1..16) decides
 how many checkers run at once. Result order always follows the `[[checker]]`
 declaration order, so reports are reproducible.
 
+## Caching
+
+`--cache` (or `[run].cache = true`) reuses a checker's previous result when
+nothing has changed. The key covers the checker options, the tool version and a
+fingerprint of every C/C++ file under the project root (path, size, mtime), so a
+tool upgrade or a source edit invalidates it. Only diagnostics are cached - the
+report marks reused results with `(cached)` and the previous logs are not
+pretended to exist.
+
+Measured on this repository (`./src/util`, 4 checkers): 4.4 s cold, 260 ms warm.
+
+## CI
+
+`.github/workflows/ci.yml` runs a `self-audit` job after the build: `doctor`,
+then a full audit with `Configuration/Configuration.ci.toml` (native
+environments, `fail_on = "error"`, `ignore_outside_project = true` so libstdc++
+warnings cannot fail the build), then uploads `report.md` / `report.sarif` /
+`report.json`. To gate on regressions instead of absolute state, commit a
+baseline and enable `fail_on_new`.
+
 ## Filtering and baselines
 
 Not every finding is worth acting on. Filters drop findings explicitly and
@@ -116,6 +137,7 @@ ignore_rules = ["modernize-*"]        # glob on rule id
 ignore_paths = ["third_party/**"]     # glob on project-relative path
 ignore_messages = ["is too short"]    # case-insensitive substring
 min_severity = "warning"              # drop style/information
+ignore_outside_project = true         # drop system/toolchain headers
 inline_suppressions = true
 ```
 

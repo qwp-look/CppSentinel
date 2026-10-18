@@ -3,6 +3,7 @@
 #include "cppsentinel/core/Engine.h"
 
 #include "cppsentinel/core/BuiltinTools.h"
+#include "cppsentinel/core/ResultCache.h"
 #include "cppsentinel/core/TargetEnumerator.h"
 #include "cppsentinel/core/ToolProbe.h"
 #include "cppsentinel/process/Msys2ProcessRunner.h"
@@ -17,6 +18,7 @@
 
 #include <algorithm>
 #include <future>
+#include <map>
 #include <set>
 #include <utility>
 
@@ -203,7 +205,93 @@ RunReport Engine::run(const RunRequest& request, UnifiedReport& unifiedOut) cons
     std::vector<CheckerResult> results(checkerConfigs.size());
     std::vector<PendingJob> jobs;
     jobs.reserve(checkerConfigs.size());
-    std::set<std::string> probedVersions;
+    std::map<std::string, std::string> versionByKey;
+    std::map<std::size_t, std::string> cacheKeys;
+    ResultCache cache(request.config.run.cache_dir, request.config.run.cache);
+    const std::string fingerprint =
+        cache.enabled() ? projectFingerprint(request.config.project.root)
+                       : std::string{};
+
+    // Probe each distinct (environment, executable) once, in parallel: launching
+    // an MSYS2 login shell per probe is the dominant cost of a cached run.
+    struct ProbeJob
+    {
+        std::string key;
+        std::string environment;
+        std::string executable;
+        std::string checkerId;
+    };
+
+    {
+        std::vector<ProbeJob> probeJobs;
+        std::set<std::string> seen;
+        for (const auto& checkerCfg : request.config.checkers)
+        {
+            if (!checkerCfg.enabled ||
+                request.config.environments.find(checkerCfg.environment) ==
+                    request.config.environments.end())
+            {
+                continue;
+            }
+            std::string executable = defaultExecutableForKind(checkerCfg.kind);
+            if (const auto it = checkerCfg.options.find("executable");
+                it != checkerCfg.options.end() && !it->second.empty())
+            {
+                executable = it->second;
+            }
+            if (executable.empty())
+            {
+                continue;
+            }
+            const std::string key = checkerCfg.environment + "|" + executable;
+            if (!seen.insert(key).second)
+            {
+                continue;
+            }
+            probeJobs.push_back(
+                {key, checkerCfg.environment, executable, checkerCfg.id});
+        }
+
+        std::vector<std::future<std::string>> probes;
+        probes.reserve(probeJobs.size());
+        for (const auto& probeJob : probeJobs)
+        {
+            const auto& env =
+                request.config.environments.at(probeJob.environment);
+            const auto runner =
+                runnerForEnvironment(env, request.default_runner);
+            const auto root = request.config.project.root;
+            const auto executable = probeJob.executable;
+            probes.push_back(std::async(std::launch::async,
+                                        [runner, executable, root]() {
+                                            return probeToolVersion(
+                                                runner, executable, root,
+                                                std::chrono::seconds(15));
+                                        }));
+        }
+
+        for (std::size_t i = 0; i < probeJobs.size(); ++i)
+        {
+            std::string version;
+            try
+            {
+                version = probes[i].get();
+            }
+            catch (const std::exception&)
+            {
+                version.clear();
+            }
+            versionByKey[probeJobs[i].key] = version;
+            if (!version.empty())
+            {
+                ToolVersion info;
+                info.checker_id = probeJobs[i].checkerId;
+                info.executable = probeJobs[i].executable;
+                info.version = version;
+                report.metadata.tool_versions.push_back(std::move(info));
+            }
+        }
+    }
 
     for (std::size_t i = 0; i < checkerConfigs.size(); ++i)
     {
@@ -258,8 +346,6 @@ RunReport Engine::run(const RunRequest& request, UnifiedReport& unifiedOut) cons
                               ? checkerCfg.timeout
                               : request.config.run.timeout_seconds;
 
-        // Provenance: record the tool version once per (environment, executable).
-        // Two machines disagreeing on a finding is almost always a version skew.
         std::string executable = defaultExecutableForKind(checkerCfg.kind);
         if (const auto it = checkerCfg.options.find("executable");
             it != checkerCfg.options.end() && !it->second.empty())
@@ -267,21 +353,23 @@ RunReport Engine::run(const RunRequest& request, UnifiedReport& unifiedOut) cons
             executable = it->second;
         }
         const std::string versionKey = checkerCfg.environment + "|" + executable;
-        if (!executable.empty() && probedVersions.insert(versionKey).second)
+
+        if (cache.enabled())
         {
-            const auto version = probeToolVersion(
-                context.runner, executable, context.project_root,
-                std::chrono::seconds(15),
-                layout->logs_dir /
-                    ("version-" + sanitizeFileToken(checkerCfg.id)));
-            if (!version.empty())
+            const auto versionIt = versionByKey.find(versionKey);
+            const std::string versionText =
+                versionIt == versionByKey.end() ? std::string{} : versionIt->second;
+            const std::string key =
+                cache.keyFor(checkerCfg, versionText, fingerprint);
+            if (auto cached = cache.load(key))
             {
-                ToolVersion info;
-                info.checker_id = checkerCfg.id;
-                info.executable = executable;
-                info.version = version;
-                report.metadata.tool_versions.push_back(std::move(info));
+                cached->checker_id = checkerCfg.id;
+                cached->checker_kind = checkerCfg.kind;
+                cached->message += cached->message.empty() ? "cached" : " (cached)";
+                results[i] = std::move(*cached);
+                continue;
             }
+            cacheKeys[i] = key;
         }
 
         jobs.push_back(std::move(job));
@@ -320,6 +408,11 @@ RunReport Engine::run(const RunRequest& request, UnifiedReport& unifiedOut) cons
         }
     }
 
+    for (const auto& [index, key] : cacheKeys)
+    {
+        cache.store(key, results[index]);
+    }
+
     for (std::size_t i = 0; i < checkerConfigs.size(); ++i)
     {
         auto& result = results[i];
@@ -347,7 +440,6 @@ RunReport Engine::run(const RunRequest& request, UnifiedReport& unifiedOut) cons
     report.metadata.duration =
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - wallStart);
-    report.exit_code = exitCodeFor(report, request.config.run.fail_on);
 
     // Normalize into the unified finding layer once; every artifact derives from it.
     NormalizeOptions normalize;
@@ -417,7 +509,36 @@ RunReport Engine::run(const RunRequest& request, UnifiedReport& unifiedOut) cons
 
     // With a baseline, only new findings decide the verdict - but a broken
     // checker still fails the run. Recording a baseline is not a verdict.
-    int exitCode = report.exit_code;
+    // Verdict from what is actually reported: suppressed findings and findings
+    // removed by filters must not fail the run. Hard checker failures always do.
+    int exitCode = 0;
+    if (hasHardFailure(report))
+    {
+        exitCode = 2;
+    }
+    else
+    {
+        for (const auto& checker : report.checkers)
+        {
+            if (checker.status == CheckerStatus::Failed)
+            {
+                exitCode = 2;
+                break;
+            }
+        }
+        if (exitCode == 0)
+        {
+            for (const auto& finding : unified.findings)
+            {
+                if (severityFails(finding.severity, request.config.run.fail_on))
+                {
+                    exitCode = 2;
+                    break;
+                }
+            }
+        }
+    }
+
     if (baselineActive && baselineCfg.update)
     {
         exitCode = hasHardFailure(report) ? 2 : 0;

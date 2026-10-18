@@ -52,7 +52,7 @@ ProcessRequest baseRequest(const CheckerContext& context,
                            const std::string& batchSuffix = {})
 {
     ProcessRequest req;
-    req.executable = executable;
+    req.executable = resolveExecutablePath(executable);
     req.arguments = std::move(args);
     req.working_directory = context.project_root;
     req.timeout = context.timeout;

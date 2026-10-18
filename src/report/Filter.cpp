@@ -203,6 +203,11 @@ bool directivesSuppress(const DirectiveList& directives, std::uint32_t line,
 
 std::string configReason(const FilterSettings& settings, const Finding& finding)
 {
+    if (settings.ignore_outside_project && finding.file.is_absolute())
+    {
+        // System/vendored headers outside the project: not the user's code.
+        return "config:outside_project";
+    }
     if (settings.has_min_severity &&
         severityRank(finding.severity) > severityRank(settings.min_severity))
     {
@@ -247,7 +252,8 @@ std::size_t applyFilters(UnifiedReport& report, const FilterSettings& settings,
 {
     const bool anyConfigFilter =
         settings.has_min_severity || !settings.ignore_rules.empty() ||
-        !settings.ignore_paths.empty() || !settings.ignore_messages.empty();
+        !settings.ignore_paths.empty() || !settings.ignore_messages.empty() ||
+        settings.ignore_outside_project;
     if (!anyConfigFilter && !settings.inline_suppressions)
     {
         return 0;

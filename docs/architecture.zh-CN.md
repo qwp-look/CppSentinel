@@ -18,9 +18,13 @@ CLI: run --config --target
  ConfigLoader  ──► AppConfig（失败时返回 ConfigDiagnostic 列表）
         │
         ▼
+ TargetEnumerator ──► 文件列表（目录只展开一次，四个工具看同一批文件）
+        │
+        ▼
  Engine
    创建独占 report/<run-id>/
-   按 [[checker]] 声明顺序：
+   并行探测各工具 --version（每个 环境+可执行文件 一次）
+   按 [[checker]] 声明顺序（每 max_parallel 个一批并发；命中缓存则跳过）：
      - disabled → Skipped
      - CheckerRegistry::create(kind)
      - 选择 ProcessRunner（native / msys2，测试可注入 Fake）
@@ -33,12 +37,17 @@ CLI: run --config --target
         ▼
  buildUnifiedReport  ──► UnifiedReport（路径/规则/严重度归一 + 去重 + 稳定 id + 汇总）
         │
+        ├─ applyFilters      （ignore_* + 行内抑制 + min_severity）
+        ├─ attachSnippets    （出错行原文）
+        ├─ attachFixes       （clang-tidy fixes → 结构化替换）
+        └─ applyBaseline     （new / known / fixed）
+        │
         ▼
  ReportWriter  ──► report.json / report.raw.json / report.sarif / report.md
                    + summary.txt + logs/ + artifacts/（均原子发布）
         │
         ▼
- Console summary + exitCodeFor(fail_on)
+ Console summary + 退出码（按过滤后的 findings 与 fail_on 判定）
 ```
 
 ## 报告分层
@@ -89,7 +98,7 @@ tests/unit|integration           CTest
 |------|------|
 | `main.cpp` | 仅 CLI：解析 `run --config --target`、加载配置、调用 Engine、打印汇总 |
 | `config` | TOML 解析、schema 校验、相对路径解析 → 不可变 `AppConfig` |
-| `core` | `Engine` 编排；`CheckerRegistry` 按 `kind` 创建 Checker |
+| `core` | `Engine` 编排；`CheckerRegistry` 按 `kind` 创建 Checker；`TargetEnumerator` 展开目标；`ResultCache` 结果缓存；`ToolProbe`/`BuiltinTools`/`Doctor` 环境自检 |
 | `checker` | 内建检查器；`CompileCommands` / `DiagnosticParser` |
 | `process` | `ProcessRequest/Result`；`NativeProcessRunner`、`Msys2ProcessRunner`、`FakeProcessRunner` |
 | `report` | `RunReport`（原始层）→ `UnifiedReport`（`Findings` 统一层）→ JSON / SARIF / Markdown / 控制台；独占报告目录与日志路径 |

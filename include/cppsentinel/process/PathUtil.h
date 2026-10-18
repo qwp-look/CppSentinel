@@ -21,6 +21,11 @@ std::string shellSingleQuote(std::string_view value);
 /// Keep only characters safe for report log/artifact file names.
 std::string sanitizeFileToken(std::string_view name);
 
+/// Resolve a bare command name through PATH, returning the full path when found.
+/// Accepts Windows (';') and MSYS (':') PATH syntax and '/c/...' entries, so a
+/// binary started from an MSYS shell can still launch native tools.
+std::filesystem::path resolveExecutablePath(std::string_view name);
+
 /// Resolve path relative to baseDir when not absolute.
 std::filesystem::path resolveAgainst(const std::filesystem::path& baseDir,
                                      const std::filesystem::path& maybeRelative);

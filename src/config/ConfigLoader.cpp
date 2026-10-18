@@ -235,7 +235,8 @@ ConfigLoadResult loadConfig(const std::filesystem::path& configPath)
     {
         static const std::set<std::string> allowedRun = {
             "max_parallel", "timeout_seconds", "fail_on",
-            "baseline", "fail_on_new", "update_baseline"};
+            "baseline", "fail_on_new", "update_baseline", "cache",
+            "cache_dir"};
         for (auto&& [key, value] : *run)
         {
             if (!allowedRun.count(std::string(key.str())))
@@ -275,6 +276,14 @@ ConfigLoadResult loadConfig(const std::filesystem::path& configPath)
         {
             result.config.baseline.update = *upd;
         }
+        if (auto useCache = (*run)["cache"].value<bool>())
+        {
+            result.config.run.cache = *useCache;
+        }
+        if (auto cacheDir = (*run)["cache_dir"].value<std::string>())
+        {
+            result.config.run.cache_dir = resolveAgainst(configDir, *cacheDir);
+        }
         if (auto ts = (*run)["timeout_seconds"].value<std::int64_t>())
         {
             if (*ts <= 0)
@@ -302,12 +311,18 @@ ConfigLoadResult loadConfig(const std::filesystem::path& configPath)
         }
     }
 
+    if (result.config.run.cache_dir.empty() &&
+        !result.config.project.report_dir.empty())
+    {
+        result.config.run.cache_dir = result.config.project.report_dir / ".cache";
+    }
+
     // filter
     if (const auto* filter = table["filter"].as_table())
     {
         static const std::set<std::string> allowedFilter = {
             "ignore_rules", "ignore_paths", "ignore_messages", "min_severity",
-            "inline_suppressions"};
+            "inline_suppressions", "ignore_outside_project"};
         for (auto&& [key, value] : *filter)
         {
             if (!allowedFilter.count(std::string(key.str())))
@@ -344,6 +359,10 @@ ConfigLoadResult loadConfig(const std::filesystem::path& configPath)
         if (auto inlineOk = (*filter)["inline_suppressions"].value<bool>())
         {
             result.config.filter.inline_suppressions = *inlineOk;
+        }
+        if (auto outsideOk = (*filter)["ignore_outside_project"].value<bool>())
+        {
+            result.config.filter.ignore_outside_project = *outsideOk;
         }
     }
 

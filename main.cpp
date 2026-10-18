@@ -43,6 +43,7 @@ void printUsage(const char* argv0)
         << "  --baseline <file>  Compare against a baseline and report new findings\n"
         << "  --update-baseline  Rewrite the baseline from this run\n"
         << "  --jobs <n>         Run up to n checkers in parallel (1..16)\n"
+        << "  --cache            Reuse results for an unchanged project tree\n"
         << "  --json             doctor: emit JSON instead of text\n"
         << "\n"
         << "Environment:\n"
@@ -62,6 +63,7 @@ struct CliArgs
     std::filesystem::path baseline;
     bool updateBaseline = false;
     bool json = false;
+    bool cache = false;
     int jobs = 0;
     std::filesystem::path initDir;
 };
@@ -161,6 +163,10 @@ std::optional<CliArgs> parseArgs(int argc, char* argv[], std::string& error)
         else if (opt == "--json")
         {
             args.json = true;
+        }
+        else if (opt == "--cache")
+        {
+            args.cache = true;
         }
         else if (opt == "-h" || opt == "--help")
         {
@@ -409,6 +415,10 @@ int runMain(int argc, char* argv[])
     if (args->jobs > 0)
     {
         request.config.run.max_parallel = args->jobs;
+    }
+    if (args->cache)
+    {
+        request.config.run.cache = true;
     }
 
     request.target = std::filesystem::absolute(args->target, ec);
