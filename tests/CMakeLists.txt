@@ -1,5 +1,9 @@
-# Unit and integration tests for CppSentinel v2 (linked against cppsentinel_core).
-# PATH is injected so native/MSYS2 tool lookups work under ctest on Windows.
+# Unit and integration tests for CppSentinel (linked against cppsentinel_core).
+#
+# On MinGW both test binaries are linked statically, for the same reason as the
+# CLI: a runner without MinGW on PATH must still be able to start them. The test
+# PATH is derived from the compiler location - never hard-coded to C:\msys64,
+# which is not where MSYS2 lives on a GitHub runner.
 
 set(CPPSENTINEL_TEST_SOURCES
     unit/test_path_util.cpp
@@ -24,9 +28,19 @@ target_include_directories(cppsentinel_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-# Explicit MSYS2 tool PATH so tests can find gcc/bash when needed.
-set(CPPSENTINEL_TEST_PATH
-    "C:\\msys64\\mingw64\\bin;C:\\msys64\\usr\\bin;$ENV{PATH}")
+if (MINGW)
+    target_link_options(cppsentinel_tests PRIVATE -static)
+
+    # <prefix>/mingw64/bin/<compiler> -> <prefix>/mingw64/bin, <prefix>/usr/bin
+    get_filename_component(CPPSENTINEL_MINGW_BIN "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    get_filename_component(_cppsentinel_msys2_prefix "${CPPSENTINEL_MINGW_BIN}" DIRECTORY)
+    get_filename_component(_cppsentinel_msys2_prefix "${_cppsentinel_msys2_prefix}" DIRECTORY)
+    set(CPPSENTINEL_TEST_PATH
+        "${CPPSENTINEL_MINGW_BIN};${_cppsentinel_msys2_prefix}/usr/bin;$ENV{PATH}")
+    unset(_cppsentinel_msys2_prefix)
+else()
+    set(CPPSENTINEL_TEST_PATH "$ENV{PATH}")
+endif()
 
 add_test(NAME cppsentinel_tests COMMAND cppsentinel_tests)
 set_tests_properties(cppsentinel_tests PROPERTIES

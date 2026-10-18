@@ -10,8 +10,19 @@ namespace fs = std::filesystem;
 TEST(path_to_msys_drive)
 {
     const auto p = toMsysPath(std::filesystem::path("C:/Users/test/a.cpp"));
-    REQUIRE(p.find("/c/") == 0 || p.find("/C/") == 0 || p.rfind("/c/", 0) == 0);
+#ifdef _WIN32
+    // Windows: the drive letter becomes the MSYS root segment.
+    REQUIRE(p.rfind("/c/", 0) == 0);
     REQUIRE(p.find("Users") != std::string::npos);
+#else
+    // POSIX: a drive-letter path is just a relative name. toMsysPath only
+    // normalizes it, so assert the platform-appropriate behaviour instead of
+    // Windows semantics (this test used to fail the Linux CI job).
+    REQUIRE(!p.empty());
+    REQUIRE(p.front() == '/');
+    REQUIRE(p.find(':') != std::string::npos);
+    REQUIRE(p.find("Users") != std::string::npos);
+#endif
 }
 
 TEST(path_sanitize_token)

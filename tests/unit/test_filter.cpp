@@ -190,8 +190,14 @@ TEST(outside_project_findings_can_be_dropped)
     settings.ignore_outside_project = true;
     settings.inline_suppressions = false;
 
+#ifdef _WIN32
+    const fs::path toolchainHeader = "C:/toolchain/include/c++/vector";
+#else
+    const fs::path toolchainHeader = "/usr/include/c++/13/vector";
+#endif
+
     auto report = makeUnified({
-        makeFinding("C:/toolchain/include/c++/vector", 5, "clang-diagnostic-error",
+        makeFinding(toolchainHeader, 5, "clang-diagnostic-error",
                     "system header issue"),
         makeFinding("src/a.cpp", 1, "bugprone-x", "own code"),
     });
