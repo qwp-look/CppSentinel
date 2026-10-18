@@ -20,13 +20,27 @@ compilation_database = "../build/compile_commands.json"
 report_dir = "../report"
 
 [run]
-# Parallel checkers are not implemented yet; must remain 1.
+# How many [[checker]] entries may run at the same time (1..16).
 max_parallel = 1
 # Default per-checker timeout (seconds). Overridable per [[checker]].
 timeout_seconds = 120
 # When diagnostics cause failure: never|error|warning|style|information
 # Hard statuses (start/timeout/tool/config errors) always fail.
 fail_on = "warning"
+# Baseline: accepted known findings. Uncomment to make the run fail only on
+# findings that are not in the baseline yet.
+# baseline = "../Configuration/baseline.json"
+# fail_on_new = true
+
+[filter]
+# Drop findings before they reach the report (all optional, glob syntax).
+# ignore_rules = ["modernize-*", "readability-identifier-length"]
+# ignore_paths = ["third_party/**", "build/**"]
+# ignore_messages = ["is too short"]
+# Keep only findings at or above this severity.
+# min_severity = "warning"
+# Honour "// cppsentinel-disable[-next-line] <rule>" comments in sources.
+inline_suppressions = true
 
 # Always available; used when a checker sets environment = "native".
 [environment.native]

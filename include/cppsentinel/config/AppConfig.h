@@ -54,9 +54,31 @@ struct ProjectConfig
 
 struct RunSettings
 {
-    int max_parallel = 1; ///< Only 1 is supported in v2
+    int max_parallel = 1; ///< Number of checkers to run concurrently
     std::chrono::seconds timeout_seconds{120};
     FailOn fail_on = FailOn::Warning;
+};
+
+/// Maximum accepted run.max_parallel (guards against absurd thread counts).
+constexpr int kMaxParallel = 16;
+
+/// Which findings are dropped before reporting, and why.
+struct FilterSettings
+{
+    std::vector<std::string> ignore_rules;    ///< glob, e.g. "modernize-*"
+    std::vector<std::string> ignore_paths;    ///< glob vs project-relative path
+    std::vector<std::string> ignore_messages; ///< case-insensitive substring
+    bool has_min_severity = false;
+    Severity min_severity = Severity::Unknown; ///< drop findings below this level
+    bool inline_suppressions = true;           ///< honour cppsentinel-disable comments
+};
+
+/// Baseline (known findings) comparison settings.
+struct BaselineSettings
+{
+    std::filesystem::path path;   ///< empty = baseline disabled
+    bool fail_on_new_only = true; ///< exit code considers only new findings
+    bool update = false;          ///< rewrite the baseline from this run
 };
 
 /// Fully resolved, validated configuration for one Engine::run.
@@ -66,6 +88,8 @@ struct AppConfig
     std::filesystem::path config_path;
     ProjectConfig project;
     RunSettings run;
+    FilterSettings filter;
+    BaselineSettings baseline;
     std::map<std::string, EnvironmentProfile> environments;
     std::vector<CheckerConfig> checkers; ///< Declaration order preserved
 };

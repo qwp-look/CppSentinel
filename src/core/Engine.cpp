@@ -4,6 +4,8 @@
 
 #include "cppsentinel/process/Msys2ProcessRunner.h"
 #include "cppsentinel/process/NativeProcessRunner.h"
+#include "cppsentinel/report/Baseline.h"
+#include "cppsentinel/report/Filter.h"
 #include "cppsentinel/report/ReportWriter.h"
 #include "cppsentinel/util/FileIo.h"
 
@@ -67,6 +69,26 @@ bool checkerResultFails(const CheckerResult& result, FailOn failOn)
     return false;
 }
 
+bool hasHardFailure(const RunReport& report) noexcept
+{
+    for (const auto& checker : report.checkers)
+    {
+        switch (checker.status)
+        {
+        case CheckerStatus::TimedOut:
+        case CheckerStatus::StartError:
+        case CheckerStatus::ToolError:
+        case CheckerStatus::ConfigError:
+            return true;
+        case CheckerStatus::Succeeded:
+        case CheckerStatus::Failed:
+        case CheckerStatus::Skipped:
+            break;
+        }
+    }
+    return false;
+}
+
 ProcessRunnerPtr runnerForEnvironment(const EnvironmentProfile& profile,
                                       const ProcessRunnerPtr& overrideRunner)
 {
@@ -106,6 +128,12 @@ CheckerResult makeConfigError(const CheckerConfig& cfg, std::string message)
 Engine::Engine(CheckerRegistry registry) : registry_(std::move(registry)) {}
 
 RunReport Engine::run(const RunRequest& request) const
+{
+    UnifiedReport ignored;
+    return run(request, ignored);
+}
+
+RunReport Engine::run(const RunRequest& request, UnifiedReport& unifiedOut) const
 {
     RunReport report;
     report.schema_version = 2;
@@ -230,7 +258,74 @@ RunReport Engine::run(const RunRequest& request) const
     // Normalize into the unified finding layer once; every artifact derives from it.
     NormalizeOptions normalize;
     normalize.project_root = request.config.project.root;
-    const auto unified = buildUnifiedReport(report, normalize);
+    auto unified = buildUnifiedReport(report, normalize);
+
+    // Filters run before baseline matching: a suppressed finding is not
+    // "known", it is simply not reported.
+    applyFilters(unified, request.config.filter, request.config.project.root);
+
+    const auto& baselineCfg = request.config.baseline;
+    bool baselineActive = false;
+
+    if (!baselineCfg.path.empty() && baselineCfg.update)
+    {
+        const auto data = baselineFromReport(unified);
+        std::string baselineError;
+        if (saveBaseline(baselineCfg.path, data, baselineError))
+        {
+            applyBaseline(unified, data, baselineCfg.path);
+            baselineActive = true;
+            unified.notes.push_back("baseline updated: " +
+                                    baselineCfg.path.string() + " (" +
+                                    std::to_string(data.findings.size()) +
+                                    " findings recorded)");
+        }
+        else
+        {
+            unified.notes.push_back("baseline update failed: " + baselineError);
+        }
+    }
+    else if (!baselineCfg.path.empty())
+    {
+        BaselineData data;
+        std::string baselineError;
+        if (loadBaseline(baselineCfg.path, data, baselineError))
+        {
+            applyBaseline(unified, data, baselineCfg.path);
+            baselineActive = true;
+        }
+        else
+        {
+            unified.notes.push_back("baseline ignored: " + baselineError);
+        }
+    }
+
+    // With a baseline, only new findings decide the verdict - but a broken
+    // checker still fails the run. Recording a baseline is not a verdict.
+    int exitCode = report.exit_code;
+    if (baselineActive && baselineCfg.update)
+    {
+        exitCode = hasHardFailure(report) ? 2 : 0;
+    }
+    else if (baselineActive && baselineCfg.fail_on_new_only)
+    {
+        exitCode = hasHardFailure(report) ? 2 : 0;
+        for (const auto& finding : unified.findings)
+        {
+            if (finding.baseline != BaselineStatus::New)
+            {
+                continue;
+            }
+            if (severityFails(finding.severity, request.config.run.fail_on))
+            {
+                exitCode = 2;
+                break;
+            }
+        }
+    }
+
+    report.exit_code = exitCode;
+    unified.exit_code = exitCode;
 
     std::string writeError;
     if (!writer.writeReport(report, unified, writeError))
@@ -244,6 +339,7 @@ RunReport Engine::run(const RunRequest& request) const
         report.checkers.push_back(std::move(writeFail));
     }
 
+    unifiedOut = std::move(unified);
     return report;
 }
 

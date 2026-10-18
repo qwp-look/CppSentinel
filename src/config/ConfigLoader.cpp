@@ -71,6 +71,19 @@ bool knownMsystem(std::string_view value)
            iequals(value, "msys2");
 }
 
+std::optional<Severity> parseSeverityName(std::string_view value)
+{
+    if (iequals(value, "error"))
+        return Severity::Error;
+    if (iequals(value, "warning") || iequals(value, "warn"))
+        return Severity::Warning;
+    if (iequals(value, "style"))
+        return Severity::Style;
+    if (iequals(value, "information") || iequals(value, "info"))
+        return Severity::Information;
+    return std::nullopt;
+}
+
 std::vector<std::string> readStringArray(const toml::array* arr)
 {
     std::vector<std::string> out;
@@ -132,7 +145,7 @@ ConfigLoadResult loadConfig(const std::filesystem::path& configPath)
 
     // Only v2 top-level keys are accepted (rejects legacy [MethodName] tables).
     static const std::set<std::string> allowedTop = {
-        "schema_version", "project", "run", "environment", "checker"};
+        "schema_version", "project", "run", "filter", "environment", "checker"};
     for (auto&& [key, value] : table)
     {
         const std::string k(key.str());
@@ -221,7 +234,8 @@ ConfigLoadResult loadConfig(const std::filesystem::path& configPath)
     if (const auto* run = table["run"].as_table())
     {
         static const std::set<std::string> allowedRun = {
-            "max_parallel", "timeout_seconds", "fail_on"};
+            "max_parallel", "timeout_seconds", "fail_on",
+            "baseline", "fail_on_new", "update_baseline"};
         for (auto&& [key, value] : *run)
         {
             if (!allowedRun.count(std::string(key.str())))
@@ -233,13 +247,33 @@ ConfigLoadResult loadConfig(const std::filesystem::path& configPath)
 
         if (auto mp = (*run)["max_parallel"].value<std::int64_t>())
         {
-            if (*mp != 1)
+            if (*mp < 1 || *mp > kMaxParallel)
             {
                 addError(result.diagnostics, "run.max_parallel",
-                         "only max_parallel = 1 is supported in v2",
-                         "Set max_parallel = 1 (parallel execution is deferred)");
+                         "max_parallel must be between 1 and " +
+                             std::to_string(kMaxParallel),
+                         "Use 1 for sequential runs or up to " +
+                             std::to_string(kMaxParallel));
             }
-            result.config.run.max_parallel = static_cast<int>(*mp);
+            else
+            {
+                result.config.run.max_parallel = static_cast<int>(*mp);
+            }
+        }
+        if (auto bl = (*run)["baseline"].value<std::string>())
+        {
+            if (!bl->empty())
+            {
+                result.config.baseline.path = resolveAgainst(configDir, *bl);
+            }
+        }
+        if (auto fan = (*run)["fail_on_new"].value<bool>())
+        {
+            result.config.baseline.fail_on_new_only = *fan;
+        }
+        if (auto upd = (*run)["update_baseline"].value<bool>())
+        {
+            result.config.baseline.update = *upd;
         }
         if (auto ts = (*run)["timeout_seconds"].value<std::int64_t>())
         {
@@ -265,6 +299,51 @@ ConfigLoadResult loadConfig(const std::filesystem::path& configPath)
                          "invalid fail_on '" + *fo + "'",
                          "Use never|error|warning|style|information");
             }
+        }
+    }
+
+    // filter
+    if (const auto* filter = table["filter"].as_table())
+    {
+        static const std::set<std::string> allowedFilter = {
+            "ignore_rules", "ignore_paths", "ignore_messages", "min_severity",
+            "inline_suppressions"};
+        for (auto&& [key, value] : *filter)
+        {
+            if (!allowedFilter.count(std::string(key.str())))
+            {
+                addError(result.diagnostics, "filter." + std::string(key.str()),
+                         "unknown field",
+                         "Use ignore_rules / ignore_paths / ignore_messages / "
+                         "min_severity / inline_suppressions");
+            }
+        }
+
+        result.config.filter.ignore_rules =
+            readStringArray((*filter)["ignore_rules"].as_array());
+        result.config.filter.ignore_paths =
+            readStringArray((*filter)["ignore_paths"].as_array());
+        result.config.filter.ignore_messages =
+            readStringArray((*filter)["ignore_messages"].as_array());
+
+        if (auto minSeverity = (*filter)["min_severity"].value<std::string>())
+        {
+            if (auto parsed = parseSeverityName(*minSeverity))
+            {
+                result.config.filter.has_min_severity = true;
+                result.config.filter.min_severity = *parsed;
+            }
+            else
+            {
+                addError(result.diagnostics, "filter.min_severity",
+                         "invalid min_severity '" + *minSeverity + "'",
+                         "Use error|warning|style|information");
+            }
+        }
+
+        if (auto inlineOk = (*filter)["inline_suppressions"].value<bool>())
+        {
+            result.config.filter.inline_suppressions = *inlineOk;
         }
     }
 

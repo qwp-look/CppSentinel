@@ -82,7 +82,7 @@ std::string formatUnifiedSummary(const UnifiedReport& report)
     oss << "findings: " << summary.total_findings << " distinct / "
         << summary.raw_diagnostics << " raw";
     if (summary.deduplicated > 0 || summary.attached_notes > 0 ||
-        summary.tool_notices > 0)
+        summary.tool_notices > 0 || summary.suppressed > 0)
     {
         oss << " (";
         bool first = true;
@@ -101,9 +101,11 @@ std::string formatUnifiedSummary(const UnifiedReport& report)
         add(summary.deduplicated, "duplicates collapsed");
         add(summary.attached_notes, "notes attached");
         add(summary.tool_notices, "tool notices");
+        add(summary.suppressed, "suppressed");
         oss << ')';
     }
     oss << " across " << summary.affected_files << " files\n";
+
     oss << "  error=" << summary.severity.error
         << " warning=" << summary.severity.warning
         << " style=" << summary.severity.style
@@ -124,6 +126,14 @@ std::string formatUnifiedSummary(const UnifiedReport& report)
     if (!firstCategory)
     {
         oss << '\n';
+    }
+
+    if (report.baseline.enabled)
+    {
+        oss << "baseline: new=" << report.baseline.new_findings
+            << " known=" << report.baseline.known_findings
+            << " fixed=" << report.baseline.fixed_findings << '\n';
+        oss << "          " << report.baseline.path.generic_string() << '\n';
     }
     oss << '\n';
 

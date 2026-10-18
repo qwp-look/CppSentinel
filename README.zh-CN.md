@@ -44,6 +44,11 @@ CppSentinel run --config <Configuration.toml> --target <file-or-dir>
 |------|------|
 | `--config` | v2 配置文件路径（必须显式指定） |
 | `--target` | 检查目标（源文件或目录，语义由各 checker 解释） |
+| `--baseline` | 基线文件；只把不在基线里的 finding 视为新问题 |
+| `--update-baseline` | 用本次结果重写基线（退出码只看工具是否正常）|
+| `--jobs` | 并行运行的 checker 数量（1..16） |
+
+子命令：`run`（审计）、`doctor`（环境自检）、`init`（生成配置模板）。
 
 示例：
 
@@ -84,6 +89,40 @@ environment = "mingw64"
 
 相对路径相对于**配置文件所在目录**解析。若构建目录不是 `build`，请修改
 `compilation_database`。
+
+## 过滤与基线
+
+不是每条问题都值得处理。过滤器会显式丢弃并记录原因，而不是悄悄隐藏：
+
+```toml
+[filter]
+ignore_rules = ["modernize-*"]        # 按规则 id 匹配（glob）
+ignore_paths = ["third_party/**"]     # 按项目相对路径匹配
+ignore_messages = ["is too short"]    # 消息子串，忽略大小写
+min_severity = "warning"              # 丢弃 style/information
+inline_suppressions = true
+```
+
+源码内抑制：
+
+```cpp
+// cppsentinel-disable-next-line readability-identifier-length
+int x;
+// cppsentinel-disable cert-err33-c        <- 本行之后整个文件
+```
+
+被抑制的 finding 不会消失：它们带原因（`config:ignore_rules`、`inline:disable` 等）
+记录在 `report.json` 的 `suppressed` 中，并在汇总里计数。
+
+基线把存量问题变成"已接受集合"：
+
+```bash
+CppSentinel run --config ... --target src --update-baseline
+CppSentinel run --config ... --target src --baseline Configuration/baseline.json
+```
+
+启用基线后只有 `new` 会失败，消失的条目记为 `fixed`。匹配先按稳定 id，
+再按 文件+规则+消息 兜底，因此仅仅行号变动不会变成新问题。
 
 ## 报告结构
 

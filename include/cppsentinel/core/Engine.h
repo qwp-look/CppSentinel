@@ -5,6 +5,7 @@
 #include "cppsentinel/config/AppConfig.h"
 #include "cppsentinel/core/CheckerRegistry.h"
 #include "cppsentinel/process/ProcessRunner.h"
+#include "cppsentinel/report/Findings.h"
 #include "cppsentinel/report/Types.h"
 
 #include <filesystem>
@@ -27,9 +28,13 @@ class Engine
 public:
     explicit Engine(CheckerRegistry registry = {});
 
-    /// Create report dir, run enabled checkers sequentially, write report.json.
+    /// Create report dir, run enabled checkers, write every report artifact.
     /// Never throws for per-checker tool failures; may record StartError entries.
     RunReport run(const RunRequest& request) const;
+
+    /// Same, plus the normalized/filtered/baseline-matched layer that the
+    /// artifacts were written from (used by the CLI for its console summary).
+    RunReport run(const RunRequest& request, UnifiedReport& unifiedOut) const;
 
 private:
     CheckerRegistry registry_;

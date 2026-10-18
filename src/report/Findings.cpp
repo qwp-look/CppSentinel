@@ -446,23 +446,50 @@ UnifiedReport buildUnifiedReport(const RunReport& raw,
                   return a.message < b.message;
               });
 
-    // Rollups
+    for (auto& finding : findings)
+    {
+        std::sort(finding.tools.begin(), finding.tools.end());
+        finding.id = hexId(fnv1a64(dedupKey(finding)));
+    }
+
+    unified.findings = std::move(findings);
+    recomputeSummary(unified);
+
+    unified.summary.raw_diagnostics = rawDiagnostics;
+    unified.summary.attached_notes = attachedNotes;
+    unified.summary.tool_notices = toolNotices;
+    const std::size_t accounted = unified.summary.total_findings +
+                                  attachedNotes + toolNotices + orphanNotes;
+    unified.summary.deduplicated =
+        rawDiagnostics > accounted ? rawDiagnostics - accounted : 0;
+
+    for (const auto& path : outsideRoot)
+    {
+        unified.notes.push_back(
+            "diagnostic path outside project root, kept absolute: " + path);
+    }
+
+    return unified;
+}
+
+void recomputeSummary(UnifiedReport& report)
+{
+    auto& summary = report.summary;
+    summary.total_findings = 0;
+    summary.severity = SeverityCounts{};
+    summary.files.clear();
+    summary.rules.clear();
+    summary.categories.clear();
+    summary.suppressed = report.suppressed.size();
+
     std::map<std::string, std::size_t> fileIndex;
     std::map<std::string, std::size_t> ruleIndex;
     std::map<std::string, std::size_t> categoryIndex;
 
-    std::vector<FileFindingSummary> files;
-    std::vector<RuleFindingSummary> rules;
-    std::vector<CategoryFindingSummary> categories;
-
-    for (auto& finding : findings)
+    for (const auto& finding : report.findings)
     {
-        std::sort(finding.tools.begin(), finding.tools.end());
-
-        finding.id = hexId(fnv1a64(dedupKey(finding)));
-
-        countSeverity(unified.summary.severity, finding.severity);
-        ++unified.summary.total_findings;
+        countSeverity(summary.severity, finding.severity);
+        ++summary.total_findings;
 
         const std::string fileKey = pathKey(finding.file.generic_string());
         auto fileIt = fileIndex.find(fileKey);
@@ -470,11 +497,11 @@ UnifiedReport buildUnifiedReport(const RunReport& raw,
         {
             FileFindingSummary entry;
             entry.file = finding.file;
-            fileIndex.emplace(fileKey, files.size());
-            files.push_back(std::move(entry));
+            fileIndex.emplace(fileKey, summary.files.size());
+            summary.files.push_back(std::move(entry));
             fileIt = fileIndex.find(fileKey);
         }
-        countSeverity(files[fileIt->second].counts, finding.severity);
+        countSeverity(summary.files[fileIt->second].counts, finding.severity);
 
         const std::string ruleKey = lowerAsciiCopy(finding.rule);
         auto ruleIt = ruleIndex.find(ruleKey);
@@ -485,12 +512,12 @@ UnifiedReport buildUnifiedReport(const RunReport& raw,
             entry.category = finding.category;
             entry.severity = finding.severity;
             entry.count = 1;
-            ruleIndex.emplace(ruleKey, rules.size());
-            rules.push_back(std::move(entry));
+            ruleIndex.emplace(ruleKey, summary.rules.size());
+            summary.rules.push_back(std::move(entry));
         }
         else
         {
-            RuleFindingSummary& entry = rules[ruleIt->second];
+            RuleFindingSummary& entry = summary.rules[ruleIt->second];
             ++entry.count;
             if (severityRank(finding.severity) < severityRank(entry.severity))
             {
@@ -501,16 +528,17 @@ UnifiedReport buildUnifiedReport(const RunReport& raw,
         auto catIt = categoryIndex.find(finding.category);
         if (catIt == categoryIndex.end())
         {
-            categoryIndex.emplace(finding.category, categories.size());
-            categories.push_back(CategoryFindingSummary{finding.category, 1});
+            categoryIndex.emplace(finding.category, summary.categories.size());
+            summary.categories.push_back(
+                CategoryFindingSummary{finding.category, 1});
         }
         else
         {
-            ++categories[catIt->second].count;
+            ++summary.categories[catIt->second].count;
         }
     }
 
-    std::sort(files.begin(), files.end(),
+    std::sort(summary.files.begin(), summary.files.end(),
               [](const FileFindingSummary& a, const FileFindingSummary& b) {
                   if (a.counts.total() != b.counts.total())
                   {
@@ -523,7 +551,7 @@ UnifiedReport buildUnifiedReport(const RunReport& raw,
                   return pathKey(a.file.generic_string()) <
                          pathKey(b.file.generic_string());
               });
-    std::sort(rules.begin(), rules.end(),
+    std::sort(summary.rules.begin(), summary.rules.end(),
               [](const RuleFindingSummary& a, const RuleFindingSummary& b) {
                   if (a.count != b.count)
                   {
@@ -531,7 +559,7 @@ UnifiedReport buildUnifiedReport(const RunReport& raw,
                   }
                   return a.rule < b.rule;
               });
-    std::sort(categories.begin(), categories.end(),
+    std::sort(summary.categories.begin(), summary.categories.end(),
               [](const CategoryFindingSummary& a, const CategoryFindingSummary& b) {
                   if (a.count != b.count)
                   {
@@ -539,27 +567,7 @@ UnifiedReport buildUnifiedReport(const RunReport& raw,
                   }
                   return a.category < b.category;
               });
-
-    unified.summary.raw_diagnostics = rawDiagnostics;
-    unified.summary.attached_notes = attachedNotes;
-    unified.summary.tool_notices = toolNotices;
-    const std::size_t accounted = unified.summary.total_findings +
-                                  attachedNotes + toolNotices + orphanNotes;
-    unified.summary.deduplicated =
-        rawDiagnostics > accounted ? rawDiagnostics - accounted : 0;
-    unified.summary.affected_files = files.size();
-    unified.summary.files = std::move(files);
-    unified.summary.rules = std::move(rules);
-    unified.summary.categories = std::move(categories);
-    unified.findings = std::move(findings);
-
-    for (const auto& path : outsideRoot)
-    {
-        unified.notes.push_back(
-            "diagnostic path outside project root, kept absolute: " + path);
-    }
-
-    return unified;
+    summary.affected_files = summary.files.size();
 }
 
 } // namespace cppsentinel

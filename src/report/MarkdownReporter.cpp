@@ -102,6 +102,10 @@ void writingOverview(std::ostringstream& oss, const UnifiedReport& report)
         accounted.push_back(std::to_string(summary.tool_notices) +
                             " tool notices set aside");
     }
+    if (summary.suppressed > 0)
+    {
+        accounted.push_back(std::to_string(summary.suppressed) + " suppressed");
+    }
     if (!accounted.empty())
     {
         oss << " (";
@@ -135,6 +139,36 @@ void writingOverview(std::ostringstream& oss, const UnifiedReport& report)
         {
             oss << "| " << cell(category.category) << " | " << category.count
                 << " |\n";
+        }
+        oss << '\n';
+    }
+}
+
+void writingBaseline(std::ostringstream& oss, const UnifiedReport& report)
+{
+    if (!report.baseline.enabled)
+    {
+        return;
+    }
+    oss << "### Baseline\n\n";
+    oss << "| | |\n|---|---|\n";
+    oss << "| File | " << code(report.baseline.path.generic_string()) << " |\n";
+    oss << "| New | " << report.baseline.new_findings << " |\n";
+    oss << "| Known | " << report.baseline.known_findings << " |\n";
+    oss << "| Fixed | " << report.baseline.fixed_findings << " |\n\n";
+
+    if (!report.baseline.fixed.empty())
+    {
+        oss << "Resolved since the baseline was recorded:\n\n";
+        for (const auto& entry : report.baseline.fixed)
+        {
+            oss << "- " << code(entry.rule) << " "
+                << code(entry.file.generic_string());
+            if (entry.line)
+            {
+                oss << " :" << *entry.line;
+            }
+            oss << '\n';
         }
         oss << '\n';
     }
@@ -260,6 +294,10 @@ void writingFindings(std::ostringstream& oss, const UnifiedReport& report)
         oss << "- **" << toString(finding.severity) << "** "
             << code(finding.rule) << " " << code(location) << " - "
             << inlineText(finding.message);
+        if (finding.baseline == BaselineStatus::New)
+        {
+            oss << " **[new]**";
+        }
         if (finding.occurrences > 1)
         {
             oss << " (" << finding.occurrences << " occurrences)";
@@ -285,6 +323,7 @@ std::string formatMarkdownReport(const UnifiedReport& report)
     std::ostringstream oss;
     writingHeader(oss, report);
     writingOverview(oss, report);
+    writingBaseline(oss, report);
     writingToolRuns(oss, report);
     writingTopRules(oss, report);
     writingFiles(oss, report);

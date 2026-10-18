@@ -83,11 +83,63 @@ struct FindingsSummary
     std::size_t deduplicated = 0;    ///< raw collapsed into duplicate findings
     std::size_t attached_notes = 0;  ///< "note:" lines merged as finding context
     std::size_t tool_notices = 0;    ///< tool meta messages kept out of findings
+    std::size_t suppressed = 0;      ///< findings dropped by filters
     std::size_t affected_files = 0;
     SeverityCounts severity;
     std::vector<FileFindingSummary> files; ///< sorted: total desc, then path
     std::vector<RuleFindingSummary> rules; ///< sorted: count desc, then rule
     std::vector<CategoryFindingSummary> categories; ///< sorted: count desc
+};
+
+/// Where a finding stands relative to the configured baseline.
+enum class BaselineStatus : std::uint8_t
+{
+    NotCompared, ///< no baseline configured
+    New,         ///< not present in the baseline
+    Known        ///< accepted as pre-existing
+};
+
+inline const char* toString(BaselineStatus status) noexcept
+{
+    switch (status)
+    {
+    case BaselineStatus::NotCompared:
+        return "";
+    case BaselineStatus::New:
+        return "new";
+    case BaselineStatus::Known:
+        return "known";
+    }
+    return "";
+}
+
+/// A finding that was dropped by a filter (kept for transparency, not counted).
+struct SuppressedFinding
+{
+    std::string id;
+    std::filesystem::path file;
+    std::optional<std::uint32_t> line;
+    std::string rule;
+    std::string reason; ///< e.g. "config:ignore_rules" or "inline:disable-next-line"
+};
+
+/// A baseline entry that no longer appears in this run.
+struct FixedFinding
+{
+    std::string id;
+    std::string rule;
+    std::filesystem::path file;
+    std::optional<std::uint32_t> line;
+};
+
+struct BaselineInfo
+{
+    bool enabled = false;
+    std::filesystem::path path;
+    std::size_t new_findings = 0;
+    std::size_t known_findings = 0;
+    std::size_t fixed_findings = 0;
+    std::vector<FixedFinding> fixed;
 };
 
 /// A normalized finding: one row in the report, independent of which tool found it.
@@ -104,6 +156,7 @@ struct Finding
     std::vector<std::string> tools; ///< contributing checker kinds, sorted
     std::vector<std::string> related_notes; ///< attached "note:" context lines
     std::size_t occurrences = 1;    ///< collapsed duplicates (e.g. header per TU)
+    BaselineStatus baseline = BaselineStatus::NotCompared;
 };
 
 /// Comparable ordering for severity (lower rank = more severe).
@@ -130,12 +183,20 @@ struct UnifiedReport
     RunMetadata metadata;
     int exit_code = 0;
     FindingsSummary summary;
+    BaselineInfo baseline;
     std::vector<Finding> findings; ///< sorted by file, line, column, severity, rule
+    std::vector<SuppressedFinding> suppressed; ///< dropped by filters
     std::vector<CheckerRunSummary> checkers;
     std::vector<std::string> notes; ///< normalization / trust warnings
 };
 
 UnifiedReport buildUnifiedReport(const RunReport& raw,
                                  const NormalizeOptions& options);
+
+/// Recompute the finding-derived rollups (severity, files, rules, categories).
+/// Call after mutating `findings` (filtering, suppression, baseline matching).
+/// Raw counters captured at build time (raw_diagnostics, attached_notes,
+/// tool_notices) are preserved.
+void recomputeSummary(UnifiedReport& report);
 
 } // namespace cppsentinel

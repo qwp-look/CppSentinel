@@ -45,6 +45,11 @@ CppSentinel run --config <Configuration.toml> --target <file-or-dir>
 |------|---------|
 | `--config` | Path to a v2 config file (required, explicit) |
 | `--target` | File or directory to check (semantics depend on each checker) |
+| `--baseline` | Baseline file; only findings absent from it count as new |
+| `--update-baseline` | Rewrite the baseline from this run |
+| `--jobs` | Number of checkers to run in parallel (1..16) |
+
+Subcommands: `run` (audit), `doctor` (environment checks), `init` (write a config template).
 
 Example:
 
@@ -83,6 +88,42 @@ environment = "mingw64"
 
 Relative paths are resolved against the **config file directory**. Change
 `compilation_database` if your build dir is not `build`.
+
+## Filtering and baselines
+
+Not every finding is worth acting on. Filters drop findings explicitly and
+record why, instead of hiding them:
+
+```toml
+[filter]
+ignore_rules = ["modernize-*"]        # glob on rule id
+ignore_paths = ["third_party/**"]     # glob on project-relative path
+ignore_messages = ["is too short"]    # case-insensitive substring
+min_severity = "warning"              # drop style/information
+inline_suppressions = true
+```
+
+In-source directives:
+
+```cpp
+// cppsentinel-disable-next-line readability-identifier-length
+int x;
+// cppsentinel-disable cert-err33-c        <- rest of the file
+```
+
+Suppressed findings are listed in `report.json` under `suppressed` with a
+reason (`config:ignore_rules`, `inline:disable`, ...) and counted in the summary.
+
+Baselines turn existing debt into an accepted set:
+
+```bash
+CppSentinel run --config ... --target src --update-baseline
+CppSentinel run --config ... --target src --baseline Configuration/baseline.json
+```
+
+With a baseline only `new` findings can fail the run; entries that vanished are
+reported as `fixed`. Matching uses the stable id first, then file + rule +
+message, so a finding that only moved lines stays known.
 
 ## Report layout
 

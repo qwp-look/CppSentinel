@@ -8,9 +8,11 @@
 
 #include "cppsentinel/config/ConfigLoader.h"
 #include "cppsentinel/core/CheckerRegistry.h"
+#include "cppsentinel/core/Doctor.h"
 #include "cppsentinel/core/Engine.h"
 #include "cppsentinel/report/ConsoleReporter.h"
 #include "cppsentinel/report/Findings.h"
+#include "cppsentinel/util/FileIo.h"
 
 #include <exception>
 #include <filesystem>
@@ -28,10 +30,16 @@ void printUsage(const char* argv0)
     std::cerr
         << "Usage:\n"
         << "  " << argv0 << " run --config <file> --target <file-or-dir>\n"
+        << "  " << argv0 << " doctor --config <file>\n"
+        << "  " << argv0 << " init [--dir <dir>]\n"
         << "\n"
         << "Options:\n"
-        << "  --config   Path to v2 Configuration.toml\n"
-        << "  --target   Source file or directory to check\n"
+        << "  --config           Path to v2 Configuration.toml\n"
+        << "  --target           Source file or directory to check\n"
+        << "  --baseline <file>  Compare against a baseline and report new findings\n"
+        << "  --update-baseline  Rewrite the baseline from this run\n"
+        << "  --jobs <n>         Run up to n checkers in parallel (1..16)\n"
+        << "  --json             doctor: emit JSON instead of text\n"
         << "\n"
         << "Environment:\n"
         << "  MSYS2_ROOT   Optional MSYS2 install root\n"
@@ -44,8 +52,14 @@ void printUsage(const char* argv0)
 
 struct CliArgs
 {
+    std::string command;
     std::filesystem::path config;
     std::filesystem::path target;
+    std::filesystem::path baseline;
+    bool updateBaseline = false;
+    bool json = false;
+    int jobs = 0;
+    std::filesystem::path initDir;
 };
 
 std::optional<CliArgs> parseArgs(int argc, char* argv[], std::string& error)
@@ -62,13 +76,15 @@ std::optional<CliArgs> parseArgs(int argc, char* argv[], std::string& error)
         error = "help";
         return std::nullopt;
     }
-    if (cmd != "run")
+    if (cmd != "run" && cmd != "doctor" && cmd != "init")
     {
-        error = "unknown command '" + std::string(cmd) + "' (expected 'run')";
+        error = "unknown command '" + std::string(cmd) +
+                "' (expected run, doctor or init)";
         return std::nullopt;
     }
 
     CliArgs args;
+    args.command = std::string(cmd);
     for (int i = 2; i < argc; ++i)
     {
         const std::string_view opt = argv[i];
@@ -99,6 +115,49 @@ std::optional<CliArgs> parseArgs(int argc, char* argv[], std::string& error)
             }
             args.target = *v;
         }
+        else if (opt == "--baseline")
+        {
+            auto v = needValue("--baseline");
+            if (!v)
+            {
+                return std::nullopt;
+            }
+            args.baseline = *v;
+        }
+        else if (opt == "--update-baseline")
+        {
+            args.updateBaseline = true;
+        }
+        else if (opt == "--jobs")
+        {
+            auto v = needValue("--jobs");
+            if (!v)
+            {
+                return std::nullopt;
+            }
+            try
+            {
+                args.jobs = std::stoi(*v);
+            }
+            catch (const std::exception&)
+            {
+                error = "--jobs requires an integer";
+                return std::nullopt;
+            }
+        }
+        else if (opt == "--dir")
+        {
+            auto v = needValue("--dir");
+            if (!v)
+            {
+                return std::nullopt;
+            }
+            args.initDir = *v;
+        }
+        else if (opt == "--json")
+        {
+            args.json = true;
+        }
         else if (opt == "-h" || opt == "--help")
         {
             error = "help";
@@ -111,12 +170,17 @@ std::optional<CliArgs> parseArgs(int argc, char* argv[], std::string& error)
         }
     }
 
+    if (args.command == "init")
+    {
+        return args;
+    }
+
     if (args.config.empty())
     {
         error = "missing required --config";
         return std::nullopt;
     }
-    if (args.target.empty())
+    if (args.command == "run" && args.target.empty())
     {
         error = "missing required --target";
         return std::nullopt;
@@ -153,6 +217,116 @@ void printConfigDiagnostics(
     }
 }
 
+int runDoctorCommand(const CliArgs& args)
+{
+    auto loaded = cppsentinel::loadConfig(args.config);
+    if (!loaded)
+    {
+        printConfigDiagnostics(loaded.diagnostics);
+        return 1;
+    }
+
+    const auto report = cppsentinel::runDoctor(loaded.config);
+    std::cout << (args.json ? cppsentinel::formatDoctorJson(report)
+                            : cppsentinel::formatDoctorText(report));
+    if (args.json)
+    {
+        std::cout << '\n';
+    }
+    return report.ok() ? 0 : 1;
+}
+
+int runInitCommand(const CliArgs& args)
+{
+    namespace fs = std::filesystem;
+    const fs::path dir = args.initDir.empty() ? fs::current_path() : args.initDir;
+    const fs::path configPath = dir / "Configuration" / "Configuration.toml";
+
+    std::error_code ec;
+    fs::create_directories(configPath.parent_path(), ec);
+    if (ec)
+    {
+        std::cerr << "Error: cannot create " << configPath.parent_path().string()
+                  << ": " << ec.message() << '\n';
+        return 1;
+    }
+    if (fs::exists(configPath, ec))
+    {
+        std::cerr << "Error: " << configPath.string()
+                  << " already exists; refusing to overwrite\n";
+        return 1;
+    }
+
+    static constexpr const char* kTemplate = R"(# CppSentinel configuration (schema 2)
+schema_version = 2
+
+[project]
+root = ".."
+compilation_database = "../build/compile_commands.json"
+report_dir = "../report"
+
+[run]
+max_parallel = 2
+timeout_seconds = 120
+fail_on = "warning"
+# baseline = "../Configuration/baseline.json"
+# fail_on_new = true
+
+[filter]
+# ignore_rules = ["modernize-*"]
+# ignore_paths = ["third_party/**"]
+# ignore_messages = ["is too short"]
+# min_severity = "warning"
+inline_suppressions = true
+
+[environment.native]
+kind = "native"
+inherit_parent = true
+
+[environment.mingw64]
+kind = "msys2"
+root = "C:/msys64"
+msystem = "MINGW64"
+inherit_parent = true
+
+[[checker]]
+id = "clang-tidy"
+kind = "clang-tidy"
+enabled = true
+environment = "mingw64"
+
+[[checker]]
+id = "clang-format"
+kind = "clang-format"
+enabled = true
+environment = "mingw64"
+
+[[checker]]
+id = "compiler-diagnostics"
+kind = "compiler-diagnostics"
+enabled = true
+environment = "mingw64"
+compiler = "c++"
+
+[[checker]]
+id = "cppcheck"
+kind = "cppcheck"
+enabled = true
+environment = "mingw64"
+)";
+
+    std::string writeError;
+    if (!cppsentinel::writeTextFile(configPath, kTemplate, writeError))
+    {
+        std::cerr << "Error: " << writeError << '\n';
+        return 1;
+    }
+    std::cout << "wrote " << configPath.string()
+              << "\nnext: CppSentinel doctor --config \"" << configPath.string()
+              << "\"\n";
+    return 0;
+}
+
 int runMain(int argc, char* argv[])
 {
     std::string parseError;
@@ -167,6 +341,15 @@ int runMain(int argc, char* argv[])
         std::cerr << "Error: " << parseError << "\n\n";
         printUsage(argv[0]);
         return 1;
+    }
+
+    if (args->command == "init")
+    {
+        return runInitCommand(*args);
+    }
+    if (args->command == "doctor")
+    {
+        return runDoctorCommand(*args);
     }
 
     auto loaded = cppsentinel::loadConfig(args->config);
@@ -190,19 +373,29 @@ int runMain(int argc, char* argv[])
 
     cppsentinel::RunRequest request;
     request.config = std::move(loaded.config);
+
+    // CLI overrides applied on top of the configuration file.
+    if (!args->baseline.empty())
+    {
+        request.config.baseline.path = std::filesystem::absolute(args->baseline, ec);
+    }
+    if (args->updateBaseline)
+    {
+        request.config.baseline.update = true;
+    }
+    if (args->jobs > 0)
+    {
+        request.config.run.max_parallel = args->jobs;
+    }
+
     request.target = std::filesystem::absolute(args->target, ec);
     if (ec)
     {
         request.target = args->target;
     }
 
-    const auto report = engine.run(request);
-
-    // Rebuild the unified layer for the console view: same deterministic input
-    // Engine used for the artifacts, and no tool execution involved.
-    cppsentinel::NormalizeOptions normalize;
-    normalize.project_root = report.metadata.project_root;
-    const auto unified = cppsentinel::buildUnifiedReport(report, normalize);
+    cppsentinel::UnifiedReport unified;
+    const auto report = engine.run(request, unified);
     cppsentinel::writeUnifiedConsoleSummary(unified, std::cout);
 
     if (!report.metadata.report_dir.empty())

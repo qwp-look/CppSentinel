@@ -198,6 +198,8 @@ std::string serializeUnifiedReportJson(const UnifiedReport& report)
                 number(static_cast<long long>(report.summary.attached_notes)));
     summary.add("tool_notices",
                 number(static_cast<long long>(report.summary.tool_notices)));
+    summary.add("suppressed",
+                number(static_cast<long long>(report.summary.suppressed)));
     summary.add("affected_files",
                 number(static_cast<long long>(report.summary.affected_files)));
     summary.add("by_severity", severityCountsJson(report.summary.severity));
@@ -273,9 +275,53 @@ std::string serializeUnifiedReportJson(const UnifiedReport& report)
         f.add("tools", stringArray(finding.tools));
         f.add("notes", stringArray(finding.related_notes));
         f.add("occurrences", number(static_cast<long long>(finding.occurrences)));
+        if (finding.baseline != BaselineStatus::NotCompared)
+        {
+            f.add("baseline", jsonString(toString(finding.baseline)));
+        }
         findings.push_back(f.build());
     }
     oss << ",\"findings\":" << arrayOf(findings);
+
+    // ---- suppressed (dropped by filters, kept for transparency) ----
+    std::vector<std::string> suppressed;
+    suppressed.reserve(report.suppressed.size());
+    for (const auto& item : report.suppressed)
+    {
+        ObjectBuilder s;
+        s.add("id", jsonString(item.id));
+        s.add("file", quotedPath(item.file));
+        s.add("line", optionalNumber(item.line));
+        s.add("rule", jsonString(item.rule));
+        s.add("reason", jsonString(item.reason));
+        suppressed.push_back(s.build());
+    }
+    oss << ",\"suppressed\":" << arrayOf(suppressed);
+
+    // ---- baseline comparison ----
+    if (report.baseline.enabled)
+    {
+        ObjectBuilder b;
+        b.add("path", quotedPath(report.baseline.path));
+        b.add("new", number(static_cast<long long>(report.baseline.new_findings)));
+        b.add("known",
+              number(static_cast<long long>(report.baseline.known_findings)));
+        b.add("fixed",
+              number(static_cast<long long>(report.baseline.fixed_findings)));
+        std::vector<std::string> fixedEntries;
+        fixedEntries.reserve(report.baseline.fixed.size());
+        for (const auto& entry : report.baseline.fixed)
+        {
+            ObjectBuilder entryObject;
+            entryObject.add("id", jsonString(entry.id));
+            entryObject.add("rule", jsonString(entry.rule));
+            entryObject.add("file", quotedPath(entry.file));
+            entryObject.add("line", optionalNumber(entry.line));
+            fixedEntries.push_back(entryObject.build());
+        }
+        b.add("fixed_findings", arrayOf(fixedEntries));
+        oss << ",\"baseline\":" << b.build();
+    }
 
     oss << ",\"notes\":" << stringArray(report.notes);
     oss << '}';

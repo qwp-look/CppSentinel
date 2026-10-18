@@ -7,6 +7,9 @@ set(CPPSENTINEL_TEST_SOURCES
     unit/test_diagnostic_parser.cpp
     unit/test_json_reporter.cpp
     unit/test_findings.cpp
+    unit/test_filter.cpp
+    unit/test_baseline.cpp
+    unit/test_json_parser.cpp
     unit/test_report_dir.cpp
     unit/test_engine_fake_runner.cpp
     unit/test_compile_commands.cpp

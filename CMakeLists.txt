@@ -25,6 +25,7 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/BoostProcess.cmake")
 # ---------------------------------------------------------------------------
 add_library(cppsentinel_core STATIC
     src/util/FileIo.cpp
+    src/util/Json.cpp
     src/process/PathUtil.cpp
     src/process/Environment.cpp
     src/process/ProcessLaunch.cpp
@@ -33,12 +34,15 @@ add_library(cppsentinel_core STATIC
     src/process/FakeProcessRunner.cpp
     src/config/ConfigLoader.cpp
     src/report/Findings.cpp
+    src/report/Filter.cpp
+    src/report/Baseline.cpp
     src/report/JsonReporter.cpp
     src/report/SarifReporter.cpp
     src/report/MarkdownReporter.cpp
     src/report/ConsoleReporter.cpp
     src/report/ReportWriter.cpp
     src/core/CheckerRegistry.cpp
+    src/core/Doctor.cpp
     src/core/Engine.cpp
     src/checker/DiagnosticParser.cpp
     src/checker/CompileCommands.cpp
