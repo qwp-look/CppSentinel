@@ -89,6 +89,22 @@ environment = "mingw64"
 Relative paths are resolved against the **config file directory**. Change
 `compilation_database` if your build dir is not `build`.
 
+## Targets
+
+`--target` accepts a file or a directory. A directory is expanded once, before
+any tool runs, so clang-tidy, clang-format, compiler-diagnostics and cppcheck
+all analyse exactly the same files:
+
+- C/C++ extensions only (`.c .cc .cpp .cxx .h .hh .hpp .hxx .ipp .inl ...`)
+- `build`, `build-*`, `node_modules` and dot-directories are skipped
+- unreadable subtrees stop the walk and are reported as a note
+- `[filter].ignore_paths` globs also exclude files from analysis
+
+Checkers then invoke their tool in batches of up to 40 files (clang-format runs
+per file so a failure is attributable), and `[run].max_parallel` (1..16) decides
+how many checkers run at once. Result order always follows the `[[checker]]`
+declaration order, so reports are reproducible.
+
 ## Filtering and baselines
 
 Not every finding is worth acting on. Filters drop findings explicitly and

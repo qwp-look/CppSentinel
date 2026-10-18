@@ -90,6 +90,20 @@ environment = "mingw64"
 相对路径相对于**配置文件所在目录**解析。若构建目录不是 `build`，请修改
 `compilation_database`。
 
+## 目标展开
+
+`--target` 可以是文件或目录。目录在任何工具启动前**只展开一次**，保证
+clang-tidy、clang-format、compiler-diagnostics、cppcheck 面对完全相同的文件集：
+
+- 只收 C/C++ 扩展名（`.c .cc .cpp .cxx .h .hh .hpp .hxx .ipp .inl` 等）
+- 跳过 `build`、`build-*`、`node_modules` 与点开头的目录
+- 不可读子目录会中止遍历，并在报告 `notes` 中提示
+- `[filter].ignore_paths` 的 glob 同时用于排除分析目标
+
+随后每个 checker 按最多 40 个文件一批调用工具（clang-format 逐文件调用，便于定位失败文件），
+`[run].max_parallel`（1..16）决定同时运行几个 checker。报告顺序始终按 `[[checker]]`
+声明顺序，保证可复现。
+
 ## 过滤与基线
 
 不是每条问题都值得处理。过滤器会显式丢弃并记录原因，而不是悄悄隐藏：

@@ -8,6 +8,7 @@
 #include <chrono>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace cppsentinel
 {
@@ -20,6 +21,7 @@ struct CheckerContext
     const EnvironmentProfile* environment = nullptr;
     ProcessRunnerPtr runner;
     std::filesystem::path target;                 ///< CLI --target
+    std::vector<std::filesystem::path> files;     ///< expanded target files
     std::filesystem::path project_root;
     std::filesystem::path report_dir;             ///< report/<run-id>/
     std::filesystem::path logs_dir;               ///< report/<run-id>/logs/

@@ -3,6 +3,7 @@
 #include "cppsentinel/core/Engine.h"
 
 #include "cppsentinel/core/BuiltinTools.h"
+#include "cppsentinel/core/TargetEnumerator.h"
 #include "cppsentinel/core/ToolProbe.h"
 #include "cppsentinel/process/Msys2ProcessRunner.h"
 #include "cppsentinel/process/PathUtil.h"
@@ -14,6 +15,8 @@
 #include "cppsentinel/report/SourceContext.h"
 #include "cppsentinel/util/FileIo.h"
 
+#include <algorithm>
+#include <future>
 #include <set>
 #include <utility>
 
@@ -173,14 +176,41 @@ RunReport Engine::run(const RunRequest& request, UnifiedReport& unifiedOut) cons
     report.metadata.run_id = layout->run_id;
     report.metadata.report_dir = layout->root;
 
+    // Expand the target once so every checker analyses the same file set.
+    const auto targets = enumerateTargets(
+        request.target, request.config.project.root,
+        request.config.filter.ignore_paths);
+    std::vector<std::string> runNotes;
+    if (targets.excluded > 0)
+    {
+        runNotes.push_back(std::to_string(targets.excluded) +
+                           " file(s) excluded by filter.ignore_paths");
+    }
+    if (targets.truncated)
+    {
+        runNotes.push_back(
+            "target enumeration stopped early (unreadable directory)");
+    }
+
+    struct PendingJob
+    {
+        std::size_t index = 0;
+        CheckerPtr checker;
+        CheckerContext context;
+    };
+
+    const auto& checkerConfigs = request.config.checkers;
+    std::vector<CheckerResult> results(checkerConfigs.size());
+    std::vector<PendingJob> jobs;
+    jobs.reserve(checkerConfigs.size());
     std::set<std::string> probedVersions;
 
-    for (const auto& checkerCfg : request.config.checkers)
+    for (std::size_t i = 0; i < checkerConfigs.size(); ++i)
     {
+        const auto& checkerCfg = checkerConfigs[i];
         if (!checkerCfg.enabled)
         {
-            report.checkers.push_back(
-                makeSkipped(checkerCfg, "disabled in configuration"));
+            results[i] = makeSkipped(checkerCfg, "disabled in configuration");
             continue;
         }
 
@@ -188,17 +218,17 @@ RunReport Engine::run(const RunRequest& request, UnifiedReport& unifiedOut) cons
             request.config.environments.find(checkerCfg.environment);
         if (envIt == request.config.environments.end())
         {
-            report.checkers.push_back(makeConfigError(
+            results[i] = makeConfigError(
                 checkerCfg,
-                "unknown environment '" + checkerCfg.environment + "'"));
+                "unknown environment '" + checkerCfg.environment + "'");
             continue;
         }
 
         auto checker = registry_.create(checkerCfg);
         if (!checker)
         {
-            report.checkers.push_back(makeConfigError(
-                checkerCfg, "unknown checker kind '" + checkerCfg.kind + "'"));
+            results[i] = makeConfigError(
+                checkerCfg, "unknown checker kind '" + checkerCfg.kind + "'");
             continue;
         }
 
@@ -206,13 +236,18 @@ RunReport Engine::run(const RunRequest& request, UnifiedReport& unifiedOut) cons
         const auto artifactDir = writer.checkerArtifactDir(checkerCfg.id);
         std::filesystem::create_directories(artifactDir, ec);
 
-        CheckerContext context;
+        PendingJob job;
+        job.index = i;
+        job.checker = std::move(checker);
+
+        auto& context = job.context;
         context.config = &request.config;
         context.checker = &checkerCfg;
         context.environment = &envIt->second;
         context.runner =
             runnerForEnvironment(envIt->second, request.default_runner);
         context.target = request.target;
+        context.files = targets.files;
         context.project_root = request.config.project.root;
         context.report_dir = layout->root;
         context.logs_dir = layout->logs_dir;
@@ -249,20 +284,46 @@ RunReport Engine::run(const RunRequest& request, UnifiedReport& unifiedOut) cons
             }
         }
 
-        CheckerResult result;
-        try
-        {
-            result = checker->run(context);
-        }
-        catch (const std::exception& ex)
-        {
-            result = {};
-            result.checker_id = checkerCfg.id;
-            result.checker_kind = checkerCfg.kind;
-            result.status = CheckerStatus::ToolError;
-            result.message = std::string("checker threw: ") + ex.what();
-        }
+        jobs.push_back(std::move(job));
+    }
 
+    // Run checkers in waves of `max_parallel`; results keep declaration order.
+    const auto parallel = static_cast<std::size_t>(
+        std::max(1, std::min(request.config.run.max_parallel, kMaxParallel)));
+
+    for (std::size_t start = 0; start < jobs.size(); start += parallel)
+    {
+        const std::size_t end = std::min(jobs.size(), start + parallel);
+        std::vector<std::future<CheckerResult>> wave;
+        wave.reserve(end - start);
+        for (std::size_t k = start; k < end; ++k)
+        {
+            wave.push_back(std::async(std::launch::async, [&jobs, k]() {
+                return jobs[k].checker->run(jobs[k].context);
+            }));
+        }
+        for (std::size_t k = start; k < end; ++k)
+        {
+            CheckerResult result;
+            try
+            {
+                result = wave[k - start].get();
+            }
+            catch (const std::exception& ex)
+            {
+                result.checker_id = jobs[k].context.checker->id;
+                result.checker_kind = jobs[k].context.checker->kind;
+                result.status = CheckerStatus::ToolError;
+                result.message = std::string("checker threw: ") + ex.what();
+            }
+            results[jobs[k].index] = std::move(result);
+        }
+    }
+
+    for (std::size_t i = 0; i < checkerConfigs.size(); ++i)
+    {
+        auto& result = results[i];
+        const auto& checkerCfg = checkerConfigs[i];
         if (result.checker_id.empty())
         {
             result.checker_id = checkerCfg.id;
@@ -279,7 +340,6 @@ RunReport Engine::run(const RunRequest& request, UnifiedReport& unifiedOut) cons
         {
             result.stderr_log = writer.checkerStderrLog(checkerCfg.id);
         }
-
         report.checkers.push_back(std::move(result));
     }
 
@@ -293,6 +353,7 @@ RunReport Engine::run(const RunRequest& request, UnifiedReport& unifiedOut) cons
     NormalizeOptions normalize;
     normalize.project_root = request.config.project.root;
     auto unified = buildUnifiedReport(report, normalize);
+    unified.notes.insert(unified.notes.begin(), runNotes.begin(), runNotes.end());
 
     // Filters run before baseline matching: a suppressed finding is not
     // "known", it is simply not reported.
@@ -304,7 +365,9 @@ RunReport Engine::run(const RunRequest& request, UnifiedReport& unifiedOut) cons
     {
         for (const auto& artifact : checker.artifacts)
         {
-            if (artifact.filename() != "clang-tidy-fixes.yaml")
+            const std::string artifactName = artifact.filename().string();
+            if (artifactName.rfind("clang-tidy-fixes", 0) != 0 ||
+                artifact.extension() != ".yaml")
             {
                 continue;
             }
