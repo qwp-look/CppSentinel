@@ -256,7 +256,38 @@ class ClangTidyChecker final : public Checker
         }
 
         const std::string exe = optionOr(config_, "executable", "clang-tidy");
-        const auto files = targetFiles(context);
+
+        // clang-tidy can only reason about files the compilation database
+        // knows. Handed anything else it runs with no flags at all, turning a
+        // missing include path into a clang-diagnostic-error that looks like a
+        // defect in the user's code. Skip those files and say so instead.
+        std::string loadError;
+        const auto entries =
+            loadCompileCommands(context.compilation_database, loadError);
+        std::vector<std::filesystem::path> files;
+        std::size_t skipped = 0;
+        for (const auto& file : targetFiles(context))
+        {
+            if (findCompileCommand(entries, file))
+            {
+                files.push_back(file);
+            }
+            else
+            {
+                ++skipped;
+            }
+        }
+
+        if (files.empty())
+        {
+            CheckerResult result = emptyResult(context);
+            result.status = CheckerStatus::ConfigError;
+            result.message =
+                "no compile_commands entry for the target file(s)" +
+                (loadError.empty() ? "" : " (" + loadError + ")");
+            return result;
+        }
+
         const auto batches = chunkFiles(files, kFilesPerInvocation);
 
         // -p points at the directory containing compile_commands.json
@@ -326,6 +357,11 @@ class ClangTidyChecker final : public Checker
                     : "clang-tidy reported " +
                           std::to_string(total.diagnostics.size()) +
                           " diagnostics";
+        }
+        if (skipped > 0)
+        {
+            total.message += " (" + std::to_string(skipped) +
+                             " file(s) skipped: no compile_commands entry)";
         }
         return total;
     }

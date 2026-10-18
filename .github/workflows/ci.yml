@@ -71,8 +71,10 @@ jobs:
             mingw-w64-x86_64-ninja
             mingw-w64-x86_64-clang-tools-extra
             mingw-w64-x86_64-cppcheck
+      # Tests are built too: the audit reads compile_commands.json, and a file
+      # missing from it cannot be analysed by clang-tidy.
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCPPSENTINEL_BUILD_TESTS=OFF
+        run: cmake -S . -B build -G Ninja -DCPPSENTINEL_BUILD_TESTS=ON
       - name: Build
         run: cmake --build build
       - name: Doctor
