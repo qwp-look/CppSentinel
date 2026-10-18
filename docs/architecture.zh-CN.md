@@ -31,11 +31,40 @@ CLI: run --config --target
      - 追加 CheckerResult
         │
         ▼
- ReportWriter  ──► report.json（原子发布）+ summary.txt + logs/ + artifacts/
+ buildUnifiedReport  ──► UnifiedReport（路径/规则/严重度归一 + 去重 + 稳定 id + 汇总）
+        │
+        ▼
+ ReportWriter  ──► report.json / report.raw.json / report.sarif / report.md
+                   + summary.txt + logs/ + artifacts/（均原子发布）
         │
         ▼
  Console summary + exitCodeFor(fail_on)
 ```
+
+## 报告分层
+
+```text
+CheckerResult[].Diagnostic[]   原始层：工具原样输出，逐字段可追溯（report.raw.json）
+        │  Findings.cpp 归一化
+        ▼
+UnifiedReport.findings[]        统一层：一条 finding = 一个已归位的问题（report.json）
+        │  Reporter
+        ▼
+JSON / SARIF / Markdown / 控制台   表现层：只读统一层，不再各自解析工具输出
+```
+
+归一化规则（`src/report/Findings.cpp`）：
+
+| 步骤 | 处理 |
+|------|------|
+| 路径 | 绝对路径按项目根转相对、`/` 分隔；根外路径保持绝对并记 note |
+| 位置 | `line/column == 0` 视为无位置；`file == "nofile"` 视为无文件 |
+| 严重度 | 工具 token → `error/warning/style/information/unknown`，去重时取最严重 |
+| 类别 | 规则前缀映射到 `build/defect/security/performance/maintainability/style` |
+| 去重 | 指纹 = 路径 + 行 + 列 + 规则 + 归一化消息；合并 `occurrences` 与来源工具 |
+| note | `role == Note` 的诊断挂到同文件的上一条主诊断，不单列 |
+| 元信息 | 无位置且 `information` 的工具自述信息移入 `notes.tool_notices` |
+| id | `CS-<fnv1a64>`，跨运行稳定，可用于基线比对 |
 
 ## 源码布局
 
@@ -63,7 +92,7 @@ tests/unit|integration           CTest
 | `core` | `Engine` 编排；`CheckerRegistry` 按 `kind` 创建 Checker |
 | `checker` | 内建检查器；`CompileCommands` / `DiagnosticParser` |
 | `process` | `ProcessRequest/Result`；`NativeProcessRunner`、`Msys2ProcessRunner`、`FakeProcessRunner` |
-| `report` | `RunReport`；JSON / 控制台；独占报告目录与日志路径 |
+| `report` | `RunReport`（原始层）→ `UnifiedReport`（`Findings` 统一层）→ JSON / SARIF / Markdown / 控制台；独占报告目录与日志路径 |
 
 **边界约定：**
 
@@ -81,6 +110,10 @@ tests/unit|integration           CTest
 ```
 
 不经过 `cmd.exe` / `msys2_shell.cmd`，避免嵌套引号。参数作为独立 argv，不做文本拼接。
+
+参数按**原生 Windows 路径**原样传入，并设置 `MSYS2_ARG_CONV_EXCL=*` 关闭 MSYS2 运行时的
+argv 路径重写。否则 `C:/a/b` 会被二次转换成 `C:/c/a/b`，`--export-fixes=C:/...`
+这类带路径的 flag 也会被误判为路径。
 
 子进程环境 = 可选父环境拷贝 + profile/`ProcessRequest` 覆盖；MSYS2 强制：
 

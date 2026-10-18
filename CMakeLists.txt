@@ -32,7 +32,10 @@ add_library(cppsentinel_core STATIC
     src/process/Msys2ProcessRunner.cpp
     src/process/FakeProcessRunner.cpp
     src/config/ConfigLoader.cpp
+    src/report/Findings.cpp
     src/report/JsonReporter.cpp
+    src/report/SarifReporter.cpp
+    src/report/MarkdownReporter.cpp
     src/report/ConsoleReporter.cpp
     src/report/ReportWriter.cpp
     src/core/CheckerRegistry.cpp

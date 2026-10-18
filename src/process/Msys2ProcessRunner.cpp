@@ -9,6 +9,7 @@
 #include <array>
 #include <cctype>
 #include <cstdlib>
+#include <map>
 #include <vector>
 
 namespace cppsentinel
@@ -37,20 +38,12 @@ bool looksLikeMsysRoot(const fs::path& root)
     return fs::is_regular_file(bash, ec) && !ec;
 }
 
-std::string toMsysArg(const std::string& arg)
-{
-    // Convert Windows absolute paths; leave flags and relative tokens alone.
-    if (arg.size() >= 2 && std::isalpha(static_cast<unsigned char>(arg[0])) &&
-        arg[1] == ':')
-    {
-        return toMsysPath(fs::path(arg));
-    }
-    if (arg.find('\\') != std::string::npos)
-    {
-        return toMsysPath(fs::path(arg));
-    }
-    return arg;
-}
+// MSYS2's runtime rewrites argv entries that look like POSIX paths before
+// handing them to native Windows programs. Converting "C:/x/y" to "/c/x/y"
+// ourselves therefore mangles every path twice ("C:/c/x/y") and also corrupts
+// flags such as "--export-fixes=C:/...". The checkers drive native tools, so we
+// pass native paths verbatim and disable the runtime conversion instead.
+constexpr const char* kArgConvExcl = "MSYS2_ARG_CONV_EXCL";
 
 } // namespace
 
@@ -134,15 +127,18 @@ ProcessResult Msys2ProcessRunner::run(const ProcessRequest& request) const
     bashArgs.emplace_back("exec \"$@\"");
     bashArgs.emplace_back("cppsentinel-tool");
 
-    const std::string exe = toMsysArg(request.executable.string());
+    const std::string exe = request.executable.string();
     bashArgs.push_back(exe);
     for (const auto& arg : request.arguments)
     {
-        bashArgs.push_back(toMsysArg(arg));
+        bashArgs.push_back(arg);
     }
 
+    // Keep every argument byte-for-byte: no POSIX rewriting, no MSYS2 conversion.
+    std::map<std::string, std::string> extraEnv = request.environment;
+    extraEnv[kArgConvExcl] = "*";
     auto env = buildEnvironmentBlock(request.inherit_parent_env, &profile_,
-                                     request.environment);
+                                     extraEnv);
 
     fs::path cwd = request.working_directory;
     // Keep working directory as native path for CreateProcess start dir.

@@ -87,14 +87,31 @@ environment = "mingw64"
 
 ## 报告结构
 
+单次运行产出统一报告，而不是把各工具输出拼接在一起：
+
 ```text
 report/<run-id>/
-  report.json              # 机器可读事实源
-  summary.txt
+  report.json              # 统一 findings（schema 3）：机器可读事实源
+  report.raw.json          # 各 checker 原始诊断（schema 2）：可追溯
+  report.sarif             # SARIF 2.1.0：GitHub code scanning / IDE 可直接消费
+  report.md                # 人读报告：概览 + 工具执行 + 按文件明细
+  summary.txt              # 控制台摘要（与 stdout 同源）
   logs/<checker-id>.stdout.log
   logs/<checker-id>.stderr.log
   artifacts/<checker-id>/
 ```
+
+统一层做的规范化：
+
+- **路径归一**：绝对路径转成相对项目根的 `/` 分隔路径，跨工具同文件可直接对齐
+- **规则与类别归一**：`bugprone-*` → defect、`cert-*` → security、`performance-*` → performance 等
+- **去重合并**：同一位置同一规则的重复诊断（典型是头文件在多个 TU 里各报一次）合并为一条，记录 `occurrences` 与来源工具
+- **稳定指纹**：每条 finding 带 `id`（`CS-<hash>`），跨运行不变，可用于基线比对
+- **注释归位**：clang/gcc 的 `note:` 行挂到所属诊断下，不再单列为问题
+- **元信息隔离**：`checkersReport`、`unmatchedSuppression` 等工具自述信息移出问题列表，进入 `notes`
+- **可信度提示**：超时/启动失败/配置错误的 checker 会在 `notes` 中显式标注"结果可能不完整"
+
+`report.json` 顶层为 `summary`（按严重度/类别/文件/规则的汇总）+ `findings`（排序后的明细）。
 
 ## 退出码
 

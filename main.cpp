@@ -10,6 +10,7 @@
 #include "cppsentinel/core/CheckerRegistry.h"
 #include "cppsentinel/core/Engine.h"
 #include "cppsentinel/report/ConsoleReporter.h"
+#include "cppsentinel/report/Findings.h"
 
 #include <exception>
 #include <filesystem>
@@ -196,12 +197,21 @@ int runMain(int argc, char* argv[])
     }
 
     const auto report = engine.run(request);
-    cppsentinel::writeConsoleSummary(report, std::cout);
+
+    // Rebuild the unified layer for the console view: same deterministic input
+    // Engine used for the artifacts, and no tool execution involved.
+    cppsentinel::NormalizeOptions normalize;
+    normalize.project_root = report.metadata.project_root;
+    const auto unified = cppsentinel::buildUnifiedReport(report, normalize);
+    cppsentinel::writeUnifiedConsoleSummary(unified, std::cout);
 
     if (!report.metadata.report_dir.empty())
     {
-        std::cout << "\nreport.json : "
-                  << (report.metadata.report_dir / "report.json").string()
+        const auto& dir = report.metadata.report_dir;
+        std::cout << "\nreport.md       : " << (dir / "report.md").string()
+                  << "\nreport.json     : " << (dir / "report.json").string()
+                  << "\nreport.sarif    : " << (dir / "report.sarif").string()
+                  << "\nreport.raw.json : " << (dir / "report.raw.json").string()
                   << '\n';
     }
 

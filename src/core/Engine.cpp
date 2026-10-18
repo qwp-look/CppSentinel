@@ -227,8 +227,13 @@ RunReport Engine::run(const RunRequest& request) const
             std::chrono::steady_clock::now() - wallStart);
     report.exit_code = exitCodeFor(report, request.config.run.fail_on);
 
+    // Normalize into the unified finding layer once; every artifact derives from it.
+    NormalizeOptions normalize;
+    normalize.project_root = request.config.project.root;
+    const auto unified = buildUnifiedReport(report, normalize);
+
     std::string writeError;
-    if (!writer.writeReport(report, writeError))
+    if (!writer.writeReport(report, unified, writeError))
     {
         report.exit_code = 1;
         CheckerResult writeFail;

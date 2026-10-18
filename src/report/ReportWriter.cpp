@@ -5,6 +5,8 @@
 #include "cppsentinel/process/PathUtil.h"
 #include "cppsentinel/report/ConsoleReporter.h"
 #include "cppsentinel/report/JsonReporter.h"
+#include "cppsentinel/report/MarkdownReporter.h"
+#include "cppsentinel/report/SarifReporter.h"
 #include "cppsentinel/util/FileIo.h"
 
 #include <fstream>
@@ -65,6 +67,34 @@ bool directoryIsWritable(const fs::path& dir, std::string& errorMessage)
     }
     std::error_code removeEc;
     fs::remove(probe, removeEc);
+    return true;
+}
+
+/// Write to a sibling temp file then rename, so a crash never leaves a
+/// truncated report behind (report.json stays parseable at all times).
+bool writeAtomic(const fs::path& path, const std::string& content,
+                 std::string& errorMessage)
+{
+    const fs::path tmp = path.parent_path() / (path.filename().string() + ".tmp");
+    if (!writeTextFile(tmp, content, errorMessage))
+    {
+        return false;
+    }
+
+    std::error_code ec;
+    fs::rename(tmp, path, ec);
+    if (ec)
+    {
+        ec.clear();
+        fs::copy_file(tmp, path, fs::copy_options::overwrite_existing, ec);
+        if (ec)
+        {
+            errorMessage = "failed to publish " + path.filename().string() +
+                           ": " + ec.message();
+            return false;
+        }
+        fs::remove(tmp, ec);
+    }
     return true;
 }
 
@@ -165,34 +195,45 @@ fs::path ReportWriter::checkerArtifactDir(const std::string& checkerId) const
 bool ReportWriter::writeReport(const RunReport& report,
                                std::string& errorMessage) const
 {
-    const auto jsonPath = layout_.root / "report.json";
-    const auto summaryPath = layout_.root / "summary.txt";
+    NormalizeOptions options;
+    options.project_root = report.metadata.project_root;
+    return writeArtifacts(report, buildUnifiedReport(report, options),
+                          errorMessage);
+}
 
-    // Write JSON to a temp file then rename for a more atomic publish.
-    const auto tmpJson = layout_.root / "report.json.tmp";
-    const std::string json = serializeRunReportJson(report);
-    if (!writeTextFile(tmpJson, json, errorMessage))
+bool ReportWriter::writeReport(const RunReport& report,
+                               const UnifiedReport& unified,
+                               std::string& errorMessage) const
+{
+    return writeArtifacts(report, unified, errorMessage);
+}
+
+bool ReportWriter::writeArtifacts(const RunReport& report,
+                                  const UnifiedReport& unified,
+                                  std::string& errorMessage) const
+{
+    if (!writeAtomic(layout_.root / "report.json",
+                     serializeUnifiedReportJson(unified), errorMessage))
     {
         return false;
     }
-
-    std::error_code ec;
-    fs::rename(tmpJson, jsonPath, ec);
-    if (ec)
+    if (!writeAtomic(layout_.root / "report.raw.json",
+                     serializeRunReportJson(report), errorMessage))
     {
-        // Fallback copy+remove if rename across odd FS fails.
-        ec.clear();
-        fs::copy_file(tmpJson, jsonPath, fs::copy_options::overwrite_existing, ec);
-        if (ec)
-        {
-            errorMessage = "failed to publish report.json: " + ec.message();
-            return false;
-        }
-        fs::remove(tmpJson, ec);
+        return false;
     }
-
-    const std::string summary = formatSummaryText(report);
-    if (!writeTextFile(summaryPath, summary, errorMessage))
+    if (!writeAtomic(layout_.root / "report.sarif", serializeSarif(unified),
+                     errorMessage))
+    {
+        return false;
+    }
+    if (!writeAtomic(layout_.root / "report.md", formatMarkdownReport(unified),
+                     errorMessage))
+    {
+        return false;
+    }
+    if (!writeAtomic(layout_.root / "summary.txt", formatUnifiedSummary(unified),
+                     errorMessage))
     {
         return false;
     }

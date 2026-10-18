@@ -183,6 +183,12 @@ std::vector<Diagnostic> parseClangStyleDiagnostics(std::string_view text)
         d.line = lineNo;
         d.column = colNo;
         d.severity = parseSeverityToken(sevTok);
+        // "note:" lines annotate the preceding diagnostic (fix-it hints, why the
+        // analyzer fired, ...). They are context, not independent findings.
+        if (iequals(sevTok, "note") || iequals(sevTok, "remark"))
+        {
+            d.role = DiagnosticRole::Note;
+        }
         std::string message(messageView);
         d.rule = extractRule(message);
         d.message = std::move(message);

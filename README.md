@@ -86,14 +86,35 @@ Relative paths are resolved against the **config file directory**. Change
 
 ## Report layout
 
+Each run emits one normalized report instead of concatenated tool output:
+
 ```text
 report/<run-id>/
-  report.json
-  summary.txt
+  report.json              # unified findings (schema 3) - machine source of truth
+  report.raw.json          # per-checker raw diagnostics (schema 2) - traceability
+  report.sarif             # SARIF 2.1.0 for code scanning / IDE consumers
+  report.md                # human report: overview, tool runs, per-file findings
+  summary.txt              # console summary (same text as stdout)
   logs/<checker-id>.stdout.log
   logs/<checker-id>.stderr.log
   artifacts/<checker-id>/
 ```
+
+Normalization applied by the unified layer:
+
+- **Paths** made project-relative with `/` separators, so tools agree on one file key
+- **Rule/category** unified (`bugprone-*` → defect, `cert-*` → security, ...)
+- **Duplicates collapsed** (a header reported once per translation unit becomes one
+  finding with an `occurrences` count and a list of contributing tools)
+- **Stable ids** (`CS-<hash>`) that stay constant across runs, usable for baselines
+- **`note:` lines** attached to the diagnostic they annotate instead of being
+  counted as separate findings
+- **Tool meta output** (`checkersReport`, `unmatchedSuppression`, ...) moved out of
+  the finding list into `notes`
+- **Trust warnings** when a checker timed out or failed to start, so a partial run
+  is never mistaken for a clean one
+
+`report.json` is `summary` (severity/category/file/rule rollups) plus `findings`.
 
 ## Exit codes
 

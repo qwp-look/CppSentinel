@@ -44,6 +44,15 @@ enum class ProcessState : std::uint8_t
     StartError
 };
 
+/// Role of a diagnostic line inside a tool report.
+/// clang/gcc emit "note:" lines that annotate the preceding diagnostic; they are
+/// context, not independent findings.
+enum class DiagnosticRole : std::uint8_t
+{
+    Primary,
+    Note
+};
+
 /// [run].fail_on threshold: diagnostics at or above this level fail the run.
 enum class FailOn : std::uint8_t
 {
@@ -110,6 +119,18 @@ inline const char* toString(ProcessState s) noexcept
     return "unknown";
 }
 
+inline const char* toString(DiagnosticRole role) noexcept
+{
+    switch (role)
+    {
+    case DiagnosticRole::Primary:
+        return "primary";
+    case DiagnosticRole::Note:
+        return "note";
+    }
+    return "primary";
+}
+
 inline const char* toString(FailOn f) noexcept
 {
     switch (f)
@@ -137,6 +158,7 @@ struct Diagnostic
     Severity severity = Severity::Unknown;
     std::string message;
     std::string rule; ///< e.g. clang-tidy check id, cppcheck id
+    DiagnosticRole role = DiagnosticRole::Primary;
 };
 
 /// Result of a single [[checker]] execution.
